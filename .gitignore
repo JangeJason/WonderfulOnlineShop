@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# IntelliJ / IDEA
+.idea/
+*.iml
+
+# VSCode
+.vscode/
+
+# Maven
+backend/target/
+
+# Node
+**/node_modules/
+**/dist/
+
+# uni-app build output
+client-uniapp/unpackage/
+
+# env
+.env
+.env.*
