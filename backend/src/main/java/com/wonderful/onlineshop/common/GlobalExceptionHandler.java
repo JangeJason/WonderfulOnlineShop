@@ -12,6 +12,15 @@ import jakarta.validation.ConstraintViolationException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(BusinessException.class)
+    public ApiResponse<Void> handleBusiness(BusinessException e) {
+        String msg = e.getMessage();
+        if (msg == null || msg.isBlank()) {
+            msg = "business error";
+        }
+        return ApiResponse.fail(msg);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ApiResponse<Void> handleMethodArgumentNotValid(MethodArgumentNotValidException e) {
         FieldError fieldError = e.getBindingResult().getFieldError();

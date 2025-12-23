@@ -3,6 +3,8 @@ package com.wonderful.onlineshop.quote.service;
 import com.wonderful.onlineshop.quote.dto.QuoteRequest;
 import com.wonderful.onlineshop.quote.dto.QuoteRequestItem;
 import com.wonderful.onlineshop.quote.dto.QuoteResponse;
+import com.wonderful.onlineshop.product.entity.Product;
+import com.wonderful.onlineshop.product.service.ProductService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -15,8 +17,15 @@ import java.util.Objects;
 @Service
 public class QuoteService {
 
+    private final ProductService productService;
+
+    public QuoteService(ProductService productService) {
+        this.productService = productService;
+    }
+
     public QuoteResponse quote(QuoteRequest req) {
-        BigDecimal basePrice = new BigDecimal("800.00");
+        Product product = productService.getActiveRequired(req.productId());
+        BigDecimal basePrice = product.getBasePrice();
 
         BigDecimal optionAdjust = calcOptionAdjust(req.items());
         BigDecimal formulaPart = calcFormulaPart(req.items());

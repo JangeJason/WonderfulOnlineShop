@@ -10,6 +10,14 @@ spring:
     username: sa
     password:
 
+  sql:
+    init:
+      mode: always
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
