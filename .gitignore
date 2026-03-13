@@ -21,3 +21,23 @@ client-uniapp/unpackage/
 # env
 .env
 .env.*
+
+# local agent/runtime artifacts
+.agent/
+.agents/
+.codex/
+
+# logs
+*.log
+admin-web/*.log
+backend/*.log
+
+# java bytecode
+*.class
+
+# local/private configs
+project.private.config.json
+
+# runtime uploads (keep out of git)
+backend/uploads/*
+!backend/uploads/.gitkeep
