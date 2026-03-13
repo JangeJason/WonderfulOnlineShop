@@ -1,6 +1,8 @@
 package com.wonderful.onlineshop.common;
 
 import cn.dev33.satoken.exception.NotLoginException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -11,6 +13,8 @@ import jakarta.validation.ConstraintViolationException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BusinessException.class)
     public ApiResponse<Void> handleBusiness(BusinessException e) {
@@ -44,8 +48,9 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ApiResponse<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
-        return ApiResponse.fail("invalid request body");
+    public ApiResponse<Void> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
+        e.printStackTrace();
+        return ApiResponse.fail("invalid request body: " + e.getMessage());
     }
 
     @ExceptionHandler(NotLoginException.class)
@@ -55,6 +60,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ApiResponse<Void> handleOther(Exception e) {
-        return ApiResponse.fail("internal server error");
+        log.error("Unhandled exception", e);
+        return ApiResponse.fail("internal server error: " + e.getMessage());
     }
 }

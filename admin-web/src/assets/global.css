@@ -1,0 +1,245 @@
+/* ==========================================
+   Wonderful Online Shop — Global Design System
+   Primary: #004178  |  Accent: #C8963E
+   ========================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* ── Primary palette ── */
+  --c-primary: #004178;
+  --c-primary-light: #0B5EA6;
+  --c-primary-hover: #0A5494;
+  --c-primary-dark: #00315A;
+  --c-primary-surface: #E8F0F8;
+
+  /* ── Accent (Gold) ── */
+  --c-accent: #C8963E;
+  --c-accent-light: #DAB06A;
+  --c-accent-surface: #FDF6EB;
+
+  /* ── Semantic ── */
+  --c-success: #10B981;
+  --c-danger: #E53E3E;
+  --c-warning: #F59E0B;
+
+  /* ── Neutral ── */
+  --c-surface: #F4F7FB;
+  --c-card: #FFFFFF;
+  --c-border: #E2E8F0;
+  --c-text: #1A2332;
+  --c-text-secondary: #6B7A8D;
+  --c-text-muted: #9FADBF;
+
+  /* ── Typography ── */
+  --font-sans: 'DM Sans', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'DM Sans', 'Noto Sans SC', sans-serif;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 65, 120, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 65, 120, 0.08);
+  --shadow-lg: 0 8px 28px rgba(0, 65, 120, 0.1);
+  --shadow-card: 0 2px 8px rgba(0, 65, 120, 0.05);
+
+  /* ── Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+/* ── Global base ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--c-text);
+  background: var(--c-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 65, 120, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 65, 120, 0.25);
+}
+
+/* ── Ant Design overrides ── */
+
+/* Sider */
+.ant-layout-sider {
+  background: linear-gradient(195deg, var(--c-primary) 0%, var(--c-primary-dark) 100%) !important;
+}
+.ant-layout-sider .ant-menu {
+  background: transparent !important;
+}
+.ant-layout-sider .ant-menu-item {
+  color: rgba(255, 255, 255, 0.65) !important;
+  border-radius: var(--radius-sm) !important;
+  margin: 4px 12px !important;
+  transition: all 0.25s ease;
+}
+.ant-layout-sider .ant-menu-item:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+.ant-layout-sider .ant-menu-item-selected {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--c-accent);
+}
+
+/* Cards */
+.ant-card {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-card) !important;
+  border: 1px solid var(--c-border) !important;
+}
+.ant-card .ant-card-head {
+  border-bottom: 1px solid var(--c-border) !important;
+  font-weight: 600 !important;
+}
+.ant-card .ant-card-head-title {
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+/* Table */
+.ant-table-wrapper .ant-table {
+  border-radius: var(--radius-md) !important;
+}
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: var(--c-primary-surface) !important;
+  color: var(--c-primary) !important;
+  font-weight: 600 !important;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--c-primary) !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: var(--c-primary-surface) !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  transition: background 0.2s ease;
+}
+
+/* Modal */
+.ant-modal .ant-modal-content {
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden;
+}
+.ant-modal .ant-modal-header {
+  border-bottom: 1px solid var(--c-border) !important;
+}
+
+/* Drawer */
+.ant-drawer .ant-drawer-header {
+  background: var(--c-primary) !important;
+  border-bottom: none !important;
+}
+.ant-drawer .ant-drawer-title {
+  color: #fff !important;
+}
+.ant-drawer .ant-drawer-close {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+.ant-drawer .ant-drawer-close:hover {
+  color: #fff !important;
+}
+
+/* Tags */
+.ant-tag {
+  border-radius: 20px !important;
+  font-size: 12px;
+  padding: 2px 10px !important;
+  font-weight: 500;
+}
+
+/* Buttons */
+.ant-btn-primary {
+  box-shadow: 0 2px 8px rgba(0, 65, 120, 0.25) !important;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: all 0.25s ease !important;
+}
+.ant-btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(0, 65, 120, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+/* Descriptions */
+.ant-descriptions-bordered .ant-descriptions-item-label {
+  background: var(--c-primary-surface) !important;
+  color: var(--c-primary) !important;
+  font-weight: 500;
+}
+
+/* Collapse trigger */
+.ant-layout-sider-trigger {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* ── Utility classes ── */
+.price-gold {
+  color: var(--c-accent) !important;
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.stat-card {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.25s ease;
+}
+.stat-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.stat-card .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--c-primary);
+}
+.stat-card .stat-label {
+  font-size: 13px;
+  color: var(--c-text-secondary);
+  margin-top: 4px;
+}
+
+/* ── Animations ── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInUp 0.4s ease forwards;
+}

@@ -5,14 +5,28 @@ spring:
   application:
     name: wonderful-online-shop-backend
   datasource:
-    url: jdbc:h2:mem:wonderful;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:mysql://localhost:3306/wonderful?useUnicode=true&characterEncoding=utf-8&serverTimezone=GMT%2B8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: Wujiang520
 
   sql:
     init:
       mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: []
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 mybatis-plus:
   configuration:
@@ -27,3 +41,11 @@ sa-token:
   token-style: uuid
   is-log: true
   timeout: 2592000
+
+app:
+  upload-dir: uploads
+
+wechat:
+  miniapp:
+    appid: "wxa5a6e72a40532529"
+    secret: "c4073fdae487d370927c6865188e229b"

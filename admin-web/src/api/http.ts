@@ -25,6 +25,10 @@ client.interceptors.response.use(
     if (body && typeof body === 'object' && 'success' in body) {
       const r = body as ApiResponse<any>
       if (!r.success) {
+        if (r.message === 'not login') {
+          localStorage.removeItem('tokenValue')
+          window.location.href = '/login'
+        }
         throw new Error(r.message || 'request failed')
       }
       return r.data

@@ -18,7 +18,10 @@ const router = createRouter({
       component: HomeLayout,
       children: [
         { path: 'products', component: ProductsView },
-        { path: 'quote', component: QuoteDemoView }
+        { path: 'products/:id/parameters', component: () => import('../views/ProductParametersView.vue') },
+        { path: 'categories', component: () => import('../views/CategoriesView.vue') },
+        { path: 'quote', component: QuoteDemoView },
+        { path: 'orders', component: () => import('../views/OrdersView.vue') }
       ]
     }
   ]

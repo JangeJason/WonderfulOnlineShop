@@ -13,10 +13,13 @@ public class SaTokenConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handle -> {
-                    SaRouter.match("/admin/**").check(r -> StpUtil.checkLogin());
-                    SaRouter.match("/api/cart/**").check(r -> StpUtil.checkLogin());
-                    SaRouter.match("/api/orders/**").check(r -> StpUtil.checkLogin());
-                }))
-                .addPathPatterns("/**");
+            SaRouter.match("/admin/**").check(r -> StpUtil.checkLogin());
+            SaRouter.match("/api/cart/**").check(r -> StpUtil.checkLogin());
+            SaRouter.match("/api/orders/**").check(r -> StpUtil.checkLogin());
+            SaRouter.match("/api/upload").check(r -> StpUtil.checkLogin());
+        }))
+                .addPathPatterns("/**")
+                .excludePathPatterns("/api/auth/**", "/api/products/**", "/api/quote/**", "/uploads/**",
+                        "/api/orders/*/custom-name");
     }
 }
