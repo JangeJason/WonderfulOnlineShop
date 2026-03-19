@@ -3,6 +3,13 @@
     <OfficialHeader />
     <view class="page-container">
       <view class="content-wrapper">
+      <view v-if="!isLoggedIn" class="login-empty">
+        <text class="login-empty-title">未登录</text>
+        <view class="login-empty-btn" @click="goLogin">
+          <text class="login-empty-btn-text">去登录</text>
+        </view>
+      </view>
+      <template v-else>
       <!-- 空状态 -->
       <view v-if="items.length === 0" class="empty">
       <image class="empty-icon" src="/static/icons/empty-cart.svg" mode="aspectFit" />
@@ -111,10 +118,14 @@
         </view>
       </view>
     </view>
+      </template>
       </view>
     </view>
     <!-- #ifdef H5 -->
     <OfficialFooter />
+    <!-- #endif -->
+    <!-- #ifdef MP-WEIXIN -->
+    <CustomTabBar />
     <!-- #endif -->
   </view>
 </template>
@@ -129,11 +140,13 @@ import { toAbsoluteAssetUrl } from "../../utils/url";
 import { getParameterOptions } from "../../api/product";
 import OfficialHeader from "../../components/OfficialHeader/OfficialHeader.vue";
 import OfficialFooter from "../../components/OfficialFooter/OfficialFooter.vue";
+import CustomTabBar from "../../components/CustomTabBar/CustomTabBar.vue";
 
 import { getAddresses, type Address } from "../../api/address";
 
 const items = ref<CartItem[]>([]);
 const submitting = ref(false);
+const isLoggedIn = ref(false);
 
 const selectedItems = computed(() => items.value.filter(i => i.selected));
 const hasSelectedItems = computed(() => selectedItems.value.length > 0);
@@ -144,6 +157,7 @@ const total = computed(() =>
 );
 
 const selectedAddress = ref<Address | null>(null);
+const shouldKeepManualSelectedAddressOnce = ref(false);
 const SELECT_ADDRESS_EVENT = 'selectAddress';
 const optionNameMap = ref<Record<string, string>>({});
 const qtyDraftMap = ref<Record<number, string>>({});
@@ -279,13 +293,20 @@ async function load() {
     const data = await listCartItems(); 
     items.value = data.map(i => ({ ...i, selected: true })); // default auto-select all
     await preloadOptionNames(items.value);
-    
-    // Load default address if none is selected
-    if (!selectedAddress.value && items.value.length > 0) {
-      const addresses = await getAddresses();
-      if (addresses.length > 0) {
-        selectedAddress.value = addresses.find(a => a.isDefault) || addresses[0];
-      }
+
+    const addresses = await getAddresses();
+    if (addresses.length === 0) {
+      selectedAddress.value = null;
+    } else if (shouldKeepManualSelectedAddressOnce.value && selectedAddress.value?.id) {
+      // Returning from address picker: keep the manually selected address once.
+      selectedAddress.value =
+        addresses.find(a => a.id === selectedAddress.value?.id) ||
+        addresses.find(a => a.isDefault) ||
+        addresses[0];
+      shouldKeepManualSelectedAddressOnce.value = false;
+    } else {
+      // Normal cart entry: always sync to latest default address.
+      selectedAddress.value = addresses.find(a => a.isDefault) || addresses[0];
     }
     await nextTick();
     syncAddressSelectorLayout();
@@ -360,7 +381,7 @@ function toggleSelectAll() {
 }
 
 function goToSelectAddress() {
-  uni.navigateTo({ url: '/pages/address/address-list?mode=select' });
+  uni.navigateTo({ url: '/pages/address/address-list?mode=select&from=cart' });
 }
 
 async function onChangeQty(item: CartItem, delta: number) {
@@ -482,12 +503,17 @@ function goProducts() {
   uni.switchTab({ url: '/pages/index/index' });
 }
 
+function goLogin() {
+  uni.navigateTo({ url: "/pages/login/login" });
+}
+
 function goEditItem(item: CartItem) {
   uni.navigateTo({ url: `/pages/product-detail/product-detail?id=${item.productId}&cartItemId=${item.id}&source=cart` });
 }
 
 function handleSelectAddress(address: Address) {
   selectedAddress.value = address;
+  shouldKeepManualSelectedAddressOnce.value = true;
 }
 
 onLoad(() => {
@@ -495,7 +521,13 @@ onLoad(() => {
 });
 
 onShow(() => {
-  if (!getToken()) { uni.reLaunch({ url: '/pages/login/login' }); return; }
+  const token = getToken();
+  isLoggedIn.value = !!token;
+  if (!token) {
+    items.value = [];
+    selectedAddress.value = null;
+    return;
+  }
   load();
 });
 
@@ -514,6 +546,34 @@ onUnload(() => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 15px;
+}
+.login-empty {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.login-empty-title {
+  font-size: 34rpx;
+  color: #0F172A;
+  font-weight: 700;
+  margin-bottom: 24rpx;
+}
+.login-empty-btn {
+  height: 72rpx;
+  min-width: 180rpx;
+  border-radius: 10rpx;
+  background: #0F4C81;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24rpx;
+}
+.login-empty-btn-text {
+  color: #FFFFFF;
+  font-size: 28rpx;
+  font-weight: 600;
 }
 
 .empty {
@@ -760,7 +820,7 @@ onUnload(() => {
   background: #F3F4F6;
 }
 .cart-list {
-  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
 }
 .address-selector {
   position: fixed;
@@ -781,12 +841,12 @@ onUnload(() => {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
-  z-index: 1200;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
+  z-index: 1190;
   border: none;
   border-radius: 0;
   box-shadow: 0 -4rpx 16rpx rgba(15, 23, 42, 0.08);
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  padding-bottom: 24rpx;
 }
 /* #endif */
 </style>

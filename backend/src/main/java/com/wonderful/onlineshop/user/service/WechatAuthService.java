@@ -118,6 +118,32 @@ public class WechatAuthService {
         }
     }
 
+    public String resolveOpenIdByJsCode(String jsCode) {
+        if (jsCode == null || jsCode.isBlank()) {
+            throw new BusinessException("微信登录 code 缺失");
+        }
+        ensureConfigReady();
+        String url = String.format(CODE2SESSION_URL_TEMPLATE, appId, appSecret, jsCode);
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, null, String.class);
+            JsonNode body = objectMapper.readTree(response.getBody() == null ? "{}" : response.getBody());
+            int errCode = body.path("errcode").asInt(0);
+            if (errCode != 0) {
+                String errMsg = body.path("errmsg").asText("未知错误");
+                throw new BusinessException("微信 code2session 失败: " + errMsg);
+            }
+            String openid = body.path("openid").asText("");
+            if (openid == null || openid.isBlank()) {
+                throw new BusinessException("微信 openid 为空");
+            }
+            return openid;
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException("微信 openid 获取失败: " + ex.getMessage());
+        }
+    }
+
     private synchronized String getAccessToken() {
         long now = Instant.now().getEpochSecond();
         if (accessToken != null && now < accessTokenExpireAtEpochSecond - 60) {

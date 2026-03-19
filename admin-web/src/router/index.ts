@@ -21,7 +21,11 @@ const router = createRouter({
         { path: 'products/:id/parameters', component: () => import('../views/ProductParametersView.vue') },
         { path: 'categories', component: () => import('../views/CategoriesView.vue') },
         { path: 'quote', component: QuoteDemoView },
-        { path: 'orders', component: () => import('../views/OrdersView.vue') }
+        { path: 'orders', component: () => import('../views/OrdersView.vue') },
+        { path: 'production', component: () => import('../views/ProductionManageView.vue') },
+        { path: 'shipping', component: () => import('../views/ShippingManageView.vue') },
+        { path: 'after-sales', component: () => import('../views/AfterSaleManageView.vue') },
+        { path: 'operation-logs', component: () => import('../views/OperationLogsView.vue') }
       ]
     }
   ]

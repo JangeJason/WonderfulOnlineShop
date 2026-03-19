@@ -31,7 +31,7 @@
             </text>
           </view>
           <view :class="['status-tag', statusClass(detail.order.status)]">
-            <text class="status-text">{{ statusLabel(detail.order.status) }}</text>
+            <text class="status-text">{{ displayStatusLabel(detail.order) }}</text>
           </view>
         </view>
         <view class="info-row">
@@ -50,6 +50,18 @@
         <view class="info-row" v-if="detail.order.receiverAddress">
           <text class="info-label">收货地址</text>
           <text class="info-val">{{ detail.order.receiverAddress }}</text>
+        </view>
+        <view class="info-row" v-if="detail.order.status === 'SHIPPED' && detail.order.shippingStatus">
+          <text class="info-label">物流状态</text>
+          <text class="info-val">{{ shippingStatusLabel(detail.order.shippingStatus) }}</text>
+        </view>
+        <view class="info-row" v-if="detail.order.status === 'IN_PRODUCTION' && detail.order.productionStatus">
+          <text class="info-label">生产环节</text>
+          <text class="info-val">{{ productionStatusLabel(detail.order.productionStatus) }}</text>
+        </view>
+        <view class="info-row" v-if="detail.order.status === 'REJECTED' && detail.order.reviewReason">
+          <text class="info-label">驳回原因</text>
+          <text class="info-val reject-reason-val">{{ detail.order.reviewReason }}</text>
         </view>
       </view>
 
@@ -112,6 +124,15 @@
             <text class="file-link" v-if="item.printFileUrl" @click.stop="openFile(item.printFileUrl)">印品文件：{{ getDisplayFileName(item, "print") }}</text>
             <text class="file-link" v-if="item.proofFileUrl" @click.stop="openFile(item.proofFileUrl)">工艺对稿图：{{ getDisplayFileName(item, "proof") }}</text>
           </view>
+          <view class="order-file-upload-actions" v-if="isOrderFileUploadEnabled(detail.order.status)">
+            <view class="order-file-upload-btn" @click.stop="uploadOrderItemDesignFile(item, 'print')">
+              {{ item.printFileUrl ? "重新上传印品文件" : "上传印品文件" }}
+            </view>
+            <view class="order-file-upload-btn" @click.stop="uploadOrderItemDesignFile(item, 'proof')">
+              {{ item.proofFileUrl ? "重新上传工艺对稿图" : "上传工艺对稿图" }}
+            </view>
+            <text class="order-file-upload-tip">无印品文件时，客服会与您联系进行产品设计，请留意电话</text>
+          </view>
           
           <view class="copyright-box" v-if="item.hasCopyright">
             <view class="copyright-warning" v-if="!item.copyrightFileUrl">
@@ -139,8 +160,17 @@
         <view v-if="detail.order.status === 'PENDING'" class="action-btn btn-pay" @click="onPay">
           <text class="action-text">立即支付</text>
         </view>
-        <view v-if="detail.order.status === 'SHIPPED'" class="action-btn btn-confirm" @click="onConfirm">
+        <view v-if="detail.order.status === 'SHIPPED' && detail.order.shippingStatus === 'SIGNED'" class="action-btn btn-confirm" @click="onConfirm">
           <text class="action-text">确认收货</text>
+        </view>
+        <view v-if="(detail.order.status === 'SHIPPED' && detail.order.shippingStatus === 'SIGNED') || detail.order.status === 'COMPLETED'" class="action-btn btn-after-sale" @click="onApplyAfterSale">
+          <text class="action-text">申请售后</text>
+        </view>
+        <view v-if="detail.order.status === 'REJECTED'" class="action-btn btn-edit-order" @click="onModifyRejectedOrder">
+          <text class="action-text">修改订单</text>
+        </view>
+        <view v-if="detail.order.status === 'REJECTED'" class="action-btn btn-resubmit" @click="onResubmitReview">
+          <text class="action-text">重新提交审核</text>
         </view>
         <view v-if="detail.order.status === 'PENDING'" class="action-btn btn-cancel" @click="onCancel">
           <text class="action-text-cancel">取消订单</text>
@@ -153,9 +183,22 @@
         <text class="total-label">订单总额</text>
         <text class="total-amount">¥{{ detail.order.totalAmount }}</text>
       </view>
-      <view class="actions" v-if="detail.order.status === 'SHIPPED'">
+      <view class="actions" v-if="detail.order.status === 'SHIPPED' && detail.order.shippingStatus === 'SIGNED'">
         <view class="action-btn btn-confirm" @click="onConfirm">
           <text class="action-text">确认收货</text>
+        </view>
+      </view>
+      <view class="actions" v-if="(detail.order.status === 'SHIPPED' && detail.order.shippingStatus === 'SIGNED') || detail.order.status === 'COMPLETED'">
+        <view class="action-btn btn-after-sale" @click="onApplyAfterSale">
+          <text class="action-text">申请售后</text>
+        </view>
+      </view>
+      <view class="actions" v-if="detail.order.status === 'REJECTED'">
+        <view class="action-btn btn-edit-order" @click="onModifyRejectedOrder">
+          <text class="action-text">修改订单</text>
+        </view>
+        <view class="action-btn btn-resubmit" @click="onResubmitReview">
+          <text class="action-text">重新提交审核</text>
         </view>
       </view>
       <view class="actions" v-if="detail.order.status === 'PENDING'">
@@ -187,7 +230,8 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { onLoad, onReady } from "@dcloudio/uni-app";
-import { getOrderDetail, payOrder, cancelOrder, confirmOrder, updateOrderCustomName, type OrderDetail } from "../../api/order";
+import { getOrderDetail, cancelOrder, confirmOrder, resubmitReview, updateOrderCustomName, updateOrderItemFiles, type OrderDetail } from "../../api/order";
+import { triggerWechatPay } from "../../utils/pay";
 import { getToken } from "../../utils/storage";
 import { getApiBaseUrl, toAbsoluteAssetUrl } from "../../utils/url";
 import { getParameterOptions } from "../../api/product";
@@ -202,6 +246,7 @@ let orderId = 0;
 
 const isEditingName = ref(false);
 const editCustomName = ref('');
+const DESIGN_FILE_EXTENSIONS = ["pdf", "cdr", "jpg", "ai"];
 
 function onBack() {
   uni.navigateBack({ delta: 1 });
@@ -248,24 +293,73 @@ async function saveCustomName() {
 }
 
 const showActions = computed(() => {
-  const s = detail.value?.order.status;
-  return s === 'PENDING' || s === 'SHIPPED';
+  const o = detail.value?.order;
+  if (!o) return false;
+  if (o.status === "PENDING" || o.status === "COMPLETED" || o.status === "REJECTED") return true;
+  return o.status === "SHIPPED" && o.shippingStatus === "SIGNED";
 });
 
 function statusClass(s: string) {
   const map: Record<string, string> = {
-    PENDING: 'st-pending', PAID: 'st-paid', SHIPPED: 'st-shipped',
-    COMPLETED: 'st-completed', CANCELLED: 'st-cancelled'
+    PENDING: 'st-pending',
+    WAIT_PRODUCTION: 'st-wait-production',
+    IN_PRODUCTION: 'st-in-production',
+    WAIT_SHIPMENT: 'st-wait-shipment',
+    SHIPPED: 'st-shipped',
+    COMPLETED: 'st-completed',
+    AFTER_SALE: 'st-after-sale',
+    REJECTED: 'st-rejected',
+    CANCELLED: 'st-cancelled'
   };
   return map[s] || 'st-pending';
 }
 
 function statusLabel(s: string) {
   const map: Record<string, string> = {
-    PENDING: '待支付', PAID: '已支付', SHIPPED: '已发货',
-    COMPLETED: '已完成', CANCELLED: '已取消'
+    PENDING: '待支付',
+    REJECTED: '待修改',
+    WAIT_PRODUCTION: '待生产',
+    IN_PRODUCTION: '生产中',
+    WAIT_SHIPMENT: '待发货',
+    SHIPPED: '已发货',
+    COMPLETED: '已完成',
+    AFTER_SALE: '售后中',
+    CANCELLED: '已取消'
   };
   return map[s] || s;
+}
+
+function productionStatusLabel(s?: string | null) {
+  const map: Record<string, string> = {
+    PREPRESS_CHECK: '印前检查',
+    PLATE_MAKING: '制版',
+    PRINTING: '印刷中',
+    POST_PROCESS: '印后加工',
+    QC_PACKING: '质检打包'
+  };
+  if (!s) return '';
+  return map[s] || s;
+}
+
+function shippingStatusLabel(s?: string | null) {
+  const map: Record<string, string> = {
+    IN_TRANSIT: '运输中',
+    OUT_FOR_DELIVERY: '派送中',
+    SIGNED: '已签收'
+  };
+  if (!s) return '';
+  return map[s] || s;
+}
+
+function displayStatusLabel(order: any) {
+  const main = statusLabel(order?.status || '');
+  if (order?.status === 'IN_PRODUCTION' && order?.productionStatus) {
+    return `${main} > ${productionStatusLabel(order.productionStatus)}`;
+  }
+  if (order?.status === 'SHIPPED' && order?.shippingStatus) {
+    return `${main} > ${shippingStatusLabel(order.shippingStatus)}`;
+  }
+  return main;
 }
 
 function formatTime(t: string) {
@@ -309,6 +403,15 @@ function getFilename(url: string): string {
   return decodeURIComponent(clean.split("/").pop() || clean);
 }
 
+function getFileExtension(filename: string): string {
+  if (!filename || !filename.includes(".")) return "";
+  return filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
+}
+
+function getFilenameFromPath(path: string): string {
+  return path.split("/").pop() || path.split("\\").pop() || "";
+}
+
 function getSnapshotFileName(snapshot?: string | null, kind: "print" | "proof"): string {
   if (!snapshot) return "";
   try {
@@ -325,6 +428,10 @@ function getDisplayFileName(item: any, kind: "print" | "proof"): string {
   if (fromSnapshot) return fromSnapshot;
   const url = kind === "print" ? item?.printFileUrl : item?.proofFileUrl;
   return typeof url === "string" && url ? getFilename(url) : "";
+}
+
+function isOrderFileUploadEnabled(status?: string | null): boolean {
+  return status === "PENDING" || status === "WAIT_PRODUCTION";
 }
 
 function toCircledNumber(n: number): string {
@@ -521,6 +628,98 @@ async function uploadCopyrightForOrderItem(item: any) {
   }
 }
 
+async function pickDesignFile(): Promise<{ path: string; name: string } | null> {
+  // #ifdef MP-WEIXIN
+  const mpRes: any = await new Promise((resolve, reject) => {
+    uni.chooseMessageFile({
+      count: 1,
+      type: "file",
+      extension: DESIGN_FILE_EXTENSIONS,
+      success: resolve,
+      fail: reject,
+    });
+  });
+  const mpFile = mpRes?.tempFiles?.[0];
+  return mpFile ? { path: mpFile.path || mpFile.tempFilePath, name: mpFile.name || "" } : null;
+  // #endif
+
+  // #ifdef H5
+  const h5Res: any = await new Promise((resolve, reject) => {
+    uni.chooseFile({
+      count: 1,
+      extension: DESIGN_FILE_EXTENSIONS,
+      success: resolve,
+      fail: reject,
+    });
+  });
+  const h5File = h5Res?.tempFiles?.[0];
+  return h5File ? { path: h5File.path || h5File.tempFilePath, name: h5File.name || "" } : null;
+  // #endif
+
+  // #ifndef MP-WEIXIN
+  return null;
+  // #endif
+}
+
+async function uploadOrderItemDesignFile(item: any, kind: "print" | "proof") {
+  if (!detail.value || !isOrderFileUploadEnabled(detail.value.order.status)) {
+    uni.showToast({ title: "当前状态不可上传", icon: "none" });
+    return;
+  }
+  try {
+    const selected = await pickDesignFile();
+    if (!selected || !selected.path) return;
+
+    const ext = getFileExtension(selected.name || selected.path);
+    if (!DESIGN_FILE_EXTENSIONS.includes(ext)) {
+      uni.showToast({ title: "仅支持 .pdf .cdr .jpg .ai", icon: "none" });
+      return;
+    }
+
+    uni.showLoading({ title: "上传中..." });
+    const uploadRes: any = await new Promise((resolve, reject) => {
+      uni.uploadFile({
+        url: `${getApiBaseUrl()}/api/upload`,
+        filePath: selected.path,
+        name: "file",
+        formData: { scene: "design" },
+        header: { Authorization: getToken() },
+        success: resolve,
+        fail: reject,
+      });
+    });
+    uni.hideLoading();
+
+    if (uploadRes.statusCode !== 200) {
+      uni.showToast({ title: "上传失败", icon: "none" });
+      return;
+    }
+    let data = uploadRes.data;
+    if (typeof data === "string") data = JSON.parse(data);
+    if (!data?.success) {
+      uni.showToast({ title: data?.message || "上传失败", icon: "none" });
+      return;
+    }
+
+    const payload: any = {};
+    const fileName = selected.name || getFilenameFromPath(selected.path);
+    if (kind === "print") {
+      payload.printFileUrl = data.data.url;
+      payload.printFileName = fileName;
+    } else {
+      payload.proofFileUrl = data.data.url;
+      payload.proofFileName = fileName;
+    }
+    const updated = await updateOrderItemFiles(orderId, item.id, payload);
+    const idx = detail.value.items.findIndex((it: any) => it.id === item.id);
+    if (idx >= 0) detail.value.items[idx] = { ...detail.value.items[idx], ...updated };
+    uni.showToast({ title: "上传成功", icon: "success" });
+  } catch (e: any) {
+    uni.hideLoading();
+    uni.showToast({ title: e?.message || "上传失败", icon: "none" });
+  }
+}
+
 async function load() {
   try {
     detail.value = await getOrderDetail(orderId);
@@ -533,7 +732,7 @@ async function load() {
 
 async function onPay() {
   try { 
-    await payOrder(orderId); 
+    await triggerWechatPay(orderId);
     uni.showToast({ title: '支付成功', icon: 'success' }); 
     setTimeout(() => { uni.switchTab({ url: '/pages/orders/orders' }); }, 800);
   }
@@ -543,6 +742,47 @@ async function onPay() {
 async function onConfirm() {
   try { await confirmOrder(orderId); uni.showToast({ title: '已确认收货', icon: 'success' }); load(); }
   catch (e: any) { uni.showToast({ title: e?.message || '操作失败', icon: 'none' }); }
+}
+
+async function onApplyAfterSale() {
+  uni.navigateTo({ url: `/pages/after-sale-apply/after-sale-apply?orderId=${orderId}` });
+}
+
+function goEditRejectedOrderItem(itemId: number, productId: number) {
+  uni.navigateTo({
+    url: `/pages/product-detail/product-detail?id=${productId}&source=order&orderId=${orderId}&orderItemId=${itemId}`,
+  });
+}
+
+function onModifyRejectedOrder() {
+  const items = detail.value?.items || [];
+  if (items.length === 0) {
+    uni.showToast({ title: "订单商品为空", icon: "none" });
+    return;
+  }
+  if (items.length === 1) {
+    goEditRejectedOrderItem(items[0].id, items[0].productId);
+    return;
+  }
+  const labels = items.map((it, idx) => `${idx + 1}. ${it.productName} x${it.quantity}`);
+  uni.showActionSheet({
+    itemList: labels,
+    success: (res) => {
+      const target = items[res.tapIndex];
+      if (!target) return;
+      goEditRejectedOrderItem(target.id, target.productId);
+    },
+  });
+}
+
+async function onResubmitReview() {
+  try {
+    await resubmitReview(orderId);
+    uni.showToast({ title: '已重新提交审核', icon: 'success' });
+    load();
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || '操作失败', icon: 'none' });
+  }
 }
 
 async function onCancel() {
@@ -680,8 +920,18 @@ onReady(() => {
   justify-content: space-between;
   padding: 8rpx 0;
 }
+.info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
 .info-label { font-size: 26rpx; color: #64748B; }
 .info-val { font-size: 26rpx; color: #475569; flex: 1; text-align: right; }
+.reject-reason-val {
+  color: #DC2626;
+  font-size: 30rpx;
+  font-weight: 600;
+}
 .info-divider {
   height: 1rpx;
   background: #F1F5F9;
@@ -691,14 +941,22 @@ onReady(() => {
 /* Status tags */
 .status-tag { padding: 4rpx 16rpx; border-radius: 8rpx; }
 .st-pending { background: rgba(245, 158, 11, 0.15); }
-.st-paid { background: rgba(16, 185, 129, 0.15); }
+.st-wait-production { background: rgba(245, 158, 11, 0.15); }
+.st-in-production { background: rgba(6, 182, 212, 0.15); }
+.st-wait-shipment { background: rgba(59, 130, 246, 0.12); }
 .st-shipped { background: rgba(59, 130, 246, 0.15); }
 .st-completed { background: rgba(139, 92, 246, 0.15); }
+.st-after-sale { background: rgba(236, 72, 153, 0.14); }
+.st-rejected { background: rgba(239, 68, 68, 0.12); }
 .st-cancelled { background: rgba(100, 116, 139, 0.15); }
 .st-pending .status-text { color: #F59E0B; }
-.st-paid .status-text { color: #10B981; }
+.st-wait-production .status-text { color: #D97706; }
+.st-in-production .status-text { color: #0891B2; }
+.st-wait-shipment .status-text { color: #2563EB; }
 .st-shipped .status-text { color: #3B82F6; }
 .st-completed .status-text { color: #8B5CF6; }
+.st-after-sale .status-text { color: #DB2777; }
+.st-rejected .status-text { color: #DC2626; }
 .st-cancelled .status-text { color: #64748B; }
 .status-text { font-size: 22rpx; font-weight: 600; }
 
@@ -806,6 +1064,25 @@ onReady(() => {
   color: #0F4C81;
   text-decoration: underline;
 }
+.order-file-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.order-file-upload-btn {
+  padding: 10rpx 16rpx;
+  border: 1rpx solid #0F4C81;
+  color: #0F4C81;
+  font-size: 22rpx;
+  border-radius: 8rpx;
+  background: #F8FAFC;
+}
+.order-file-upload-tip {
+  width: 100%;
+  font-size: 22rpx;
+  color: #64748B;
+  line-height: 1.5;
+}
 
 .copyright-box {
   width: 100%;
@@ -890,6 +1167,19 @@ onReady(() => {
 .action-btn:active { opacity: 0.85; }
 .btn-pay { background: linear-gradient(135deg, #3B82F6, #2563EB); }
 .btn-confirm { background: linear-gradient(135deg, #10B981, #059669); }
+.btn-after-sale { background: linear-gradient(135deg, #EC4899, #DB2777); }
+.btn-edit-order,
+.btn-resubmit {
+  background: #FFFFFF;
+  border: 0;
+  border-radius: 0;
+}
+.btn-edit-order .action-text {
+  color: #16A34A;
+}
+.btn-resubmit .action-text {
+  color: #2563EB;
+}
 .btn-cancel {
   background: transparent;
   border: 2rpx solid #E2E8F0;
@@ -964,6 +1254,15 @@ onReady(() => {
   color: #fff;
   font-size: 30rpx;
   font-weight: 600;
+}
+/* #endif */
+
+/* #ifdef H5 */
+.page-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
 }
 /* #endif */
 </style>

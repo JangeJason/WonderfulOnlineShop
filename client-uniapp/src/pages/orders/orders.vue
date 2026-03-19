@@ -3,7 +3,13 @@
     <OfficialHeader />
     <view class="page-container">
       <view class="content-wrapper">
-        
+      <view v-if="!isLoggedIn" class="login-empty">
+        <text class="login-empty-title">未登录</text>
+        <view class="login-empty-btn" @click="goLogin">
+          <text class="login-empty-btn-text">去登录</text>
+        </view>
+      </view>
+      <template v-else>
       <!-- Tabs -->
       <view class="tabs-wrap tabs-mp-fixed" :style="mpTabsTopStyle">
         <view class="tabs">
@@ -13,9 +19,10 @@
               :key="tab.value"
               class="tab-item"
               :class="{ active: currentTab === tab.value }"
-              @click="currentTab = tab.value"
+              @click="onMainTabChange(tab.value)"
             >
               <text class="tab-text">{{ tab.label }}</text>
+              <text class="tab-count">{{ getTabCount(tab.value) }}</text>
               <view v-if="currentTab === tab.value" class="tab-indicator"></view>
             </view>
           </view>
@@ -36,6 +43,18 @@
             <view class="tabs-search-btn" @click="onSearchConfirm">搜索</view>
           </view>
           <!-- #endif -->
+        </view>
+        <view v-if="activeSubTabs.length > 0" class="sub-tabs">
+          <view
+            v-for="sub in activeSubTabs"
+            :key="sub.value"
+            class="sub-tab-item"
+            :class="{ active: currentSubTab === sub.value }"
+            @click="currentSubTab = sub.value"
+          >
+            <text class="sub-tab-text">{{ sub.label }}</text>
+            <text class="sub-tab-count">{{ getSubTabCount(sub.value) }}</text>
+          </view>
         </view>
         <!-- #ifdef MP-WEIXIN -->
         <view class="tabs-search-row" v-if="showMpSearch">
@@ -66,7 +85,7 @@
           <view class="order-top-right">
             <text v-if="order.hasCopyrightWarning" class="copyright-warning-tag">缺授权书</text>
             <view :class="['status-tag', statusClass(order.status)]">
-              <text class="status-text">{{ statusLabel(order.status) }}</text>
+              <text class="status-text">{{ displayStatusLabel(order) }}</text>
             </view>
           </view>
         </view>
@@ -86,7 +105,7 @@
             <view v-if="order.status === 'PENDING'" class="act-btn act-pay" @click.stop="onPay(order.id)">
               <text class="act-text">支付</text>
             </view>
-            <view v-if="order.status === 'SHIPPED'" class="act-btn act-confirm" @click.stop="onConfirm(order.id)">
+            <view v-if="order.status === 'SHIPPED' && order.shippingStatus === 'SIGNED'" class="act-btn act-confirm" @click.stop="onConfirm(order.id)">
               <text class="act-text">确认收货</text>
             </view>
             <view v-if="order.status === 'CANCELLED'" class="act-btn act-reorder" @click.stop="onReorder(order.id)">
@@ -99,23 +118,32 @@
         </view>
       </view>
       </view>
+      </template>
       </view>
     </view>
     <view v-if="showBackTop" class="back-top-btn" @click="backToTop">
       <image class="back-top-icon" src="/static/icons/right.svg" mode="aspectFit" />
       <text class="back-top-text">顶部</text>
     </view>
+    <!-- #ifdef H5 -->
     <OfficialFooter />
+    <!-- #endif -->
+    <!-- #ifdef MP-WEIXIN -->
+    <CustomTabBar />
+    <!-- #endif -->
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from "vue";
+import { watch } from "vue";
 import { onShow, onReady, onPageScroll } from "@dcloudio/uni-app";
-import { listOrders, payOrder, confirmOrder, deleteCancelledOrder, reorderOrder, type Order } from "../../api/order";
+import { listOrders, confirmOrder, deleteCancelledOrder, reorderOrder, type Order } from "../../api/order";
 import { getToken } from "../../utils/storage";
+import { triggerWechatPay } from "../../utils/pay";
 import OfficialHeader from "../../components/OfficialHeader/OfficialHeader.vue";
 import OfficialFooter from "../../components/OfficialFooter/OfficialFooter.vue";
+import CustomTabBar from "../../components/CustomTabBar/CustomTabBar.vue";
 
 const orders = ref<Order[]>([]);
 const currentTab = ref('');
@@ -124,23 +152,84 @@ const mpTabsSpacerStyle = ref<Record<string, string>>({});
 const showBackTop = ref(false);
 const orderSearchKeyword = ref("");
 const showMpSearch = ref(false);
+const isLoggedIn = ref(false);
+const currentSubTab = ref('');
 
 const tabs = [
   { label: '全部', value: '' },
   { label: '待付款', value: 'PENDING' },
-  { label: '待发货', value: 'PAID' },
-  { label: '待收货', value: 'SHIPPED' },
+  { label: '待修改', value: 'REJECTED' },
+  { label: '待生产', value: 'WAIT_PRODUCTION' },
+  { label: '生产中', value: 'IN_PRODUCTION' },
+  { label: '待发货', value: 'WAIT_SHIPMENT' },
+  { label: '已发货', value: 'SHIPPED' },
   { label: '已完成', value: 'COMPLETED' },
+  { label: '售后中', value: 'AFTER_SALE' },
 ];
+
+const productionSubTabs = [
+  { label: "全部环节", value: "" },
+  { label: "印前检查", value: "PREPRESS_CHECK" },
+  { label: "制版中", value: "PLATE_MAKING" },
+  { label: "印刷中", value: "PRINTING" },
+  { label: "印后加工", value: "POST_PROCESS" },
+  { label: "质检打包", value: "QC_PACKING" },
+];
+
+const shippingSubTabs = [
+  { label: "全部物流", value: "" },
+  { label: "运输中", value: "IN_TRANSIT" },
+  { label: "派送中", value: "OUT_FOR_DELIVERY" },
+  { label: "已签收", value: "SIGNED" },
+];
+
+const activeSubTabs = computed(() => {
+  if (currentTab.value === "IN_PRODUCTION") return productionSubTabs;
+  if (currentTab.value === "SHIPPED") return shippingSubTabs;
+  return [];
+});
 
 const filteredOrders = computed(() => {
   const tabFiltered = currentTab.value
     ? orders.value.filter((o) => o.status === currentTab.value)
     : orders.value;
+  const subFiltered = currentSubTab.value
+    ? tabFiltered.filter((o) => {
+        if (currentTab.value === "IN_PRODUCTION") return o.productionStatus === currentSubTab.value;
+        if (currentTab.value === "SHIPPED") return o.shippingStatus === currentSubTab.value;
+        return true;
+      })
+    : tabFiltered;
   const kw = orderSearchKeyword.value.trim().toLowerCase();
-  if (!kw) return tabFiltered;
-  return tabFiltered.filter((order) => buildOrderSearchText(order).includes(kw));
+  if (!kw) return subFiltered;
+  return subFiltered.filter((order) => buildOrderSearchText(order).includes(kw));
 });
+
+function onMainTabChange(value: string) {
+  currentTab.value = value;
+  currentSubTab.value = "";
+  nextTick(() => {
+    syncMpTabsOffsets();
+  });
+}
+
+function getTabCount(status: string): number {
+  if (!status) return orders.value.length;
+  return orders.value.filter((o) => o.status === status).length;
+}
+
+function getSubTabCount(subStatus: string): number {
+  if (!currentTab.value) return 0;
+  const main = orders.value.filter((o) => o.status === currentTab.value);
+  if (!subStatus) return main.length;
+  if (currentTab.value === "IN_PRODUCTION") {
+    return main.filter((o) => o.productionStatus === subStatus).length;
+  }
+  if (currentTab.value === "SHIPPED") {
+    return main.filter((o) => o.shippingStatus === subStatus).length;
+  }
+  return 0;
+}
 
 function buildOrderSearchText(order: Order): string {
   const parts: string[] = [];
@@ -156,19 +245,82 @@ function buildOrderSearchText(order: Order): string {
 
 function statusClass(s: string) {
   const map: Record<string, string> = {
-    PENDING: 'st-pending', PAID: 'st-paid', SHIPPED: 'st-shipped',
-    COMPLETED: 'st-completed', CANCELLED: 'st-cancelled'
+    PENDING: 'st-pending',
+    WAIT_PRODUCTION: 'st-wait-production',
+    IN_PRODUCTION: 'st-in-production',
+    WAIT_SHIPMENT: 'st-wait-shipment',
+    SHIPPED: 'st-shipped',
+    COMPLETED: 'st-completed',
+    AFTER_SALE: 'st-after-sale',
+    REJECTED: 'st-rejected',
+    CANCELLED: 'st-cancelled'
   };
   return map[s] || 'st-pending';
 }
 
 function statusLabel(s: string) {
   const map: Record<string, string> = {
-    PENDING: '待支付', PAID: '已支付', SHIPPED: '已发货',
-    COMPLETED: '已完成', CANCELLED: '已取消'
+    PENDING: '待支付',
+    REJECTED: '待修改',
+    WAIT_PRODUCTION: '待生产',
+    IN_PRODUCTION: '生产中',
+    WAIT_SHIPMENT: '待发货',
+    SHIPPED: '已发货',
+    COMPLETED: '已完成',
+    AFTER_SALE: '售后中',
+    CANCELLED: '已取消'
   };
   return map[s] || s;
 }
+
+function productionStatusLabel(s?: string | null) {
+  const map: Record<string, string> = {
+    PREPRESS_CHECK: "印前检查",
+    PLATE_MAKING: "制版",
+    PRINTING: "印刷中",
+    POST_PROCESS: "印后加工",
+    QC_PACKING: "质检打包",
+  };
+  if (!s) return "";
+  return map[s] || s;
+}
+
+function shippingStatusLabel(s?: string | null) {
+  const map: Record<string, string> = {
+    IN_TRANSIT: '运输中',
+    OUT_FOR_DELIVERY: '派送中',
+    SIGNED: '已签收'
+  };
+  if (!s) return '';
+  return map[s] || s;
+}
+
+function displayStatusLabel(order: Order) {
+  const main = statusLabel(order.status);
+  if (order.status === "IN_PRODUCTION" && order.productionStatus) {
+    return `${main} > ${productionStatusLabel(order.productionStatus)}`;
+  }
+  if (order.status === "SHIPPED" && order.shippingStatus) {
+    return `${main} > ${shippingStatusLabel(order.shippingStatus)}`;
+  }
+  return main;
+}
+
+watch(currentTab, () => {
+  currentSubTab.value = "";
+  nextTick(() => {
+    syncMpTabsOffsets();
+  });
+});
+
+watch(
+  () => activeSubTabs.value.length,
+  () => {
+    nextTick(() => {
+      syncMpTabsOffsets();
+    });
+  }
+);
 
 function formatTime(t: string) {
   if (!t) return '—';
@@ -181,7 +333,11 @@ async function load() {
 }
 
 async function onPay(id: number) {
-  try { await payOrder(id); uni.showToast({ title: '支付成功', icon: 'success' }); load(); }
+  try {
+    await triggerWechatPay(id);
+    uni.showToast({ title: '支付成功', icon: 'success' });
+    load();
+  }
   catch (e: any) { uni.showToast({ title: e?.message || '操作失败', icon: 'none' }); }
 }
 
@@ -225,6 +381,10 @@ function goDetail(id: number) {
   uni.navigateTo({ url: `/pages/order-detail/order-detail?id=${id}` });
 }
 
+function goLogin() {
+  uni.navigateTo({ url: "/pages/login/login" });
+}
+
 function backToTop() {
   uni.pageScrollTo({
     scrollTop: 0,
@@ -262,7 +422,13 @@ function syncMpTabsOffsets() {
 }
 
 onShow(() => {
-  if (!getToken()) { uni.reLaunch({ url: '/pages/login/login' }); return; }
+  const token = getToken();
+  isLoggedIn.value = !!token;
+  if (!token) {
+    orders.value = [];
+    showBackTop.value = false;
+    return;
+  }
   load();
   syncMpTabsOffsets();
 });
@@ -287,6 +453,34 @@ onPageScroll((e) => {
   margin: 0 auto;
   padding: 0 15px;
 }
+.login-empty {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.login-empty-title {
+  font-size: 34rpx;
+  color: #0F172A;
+  font-weight: 700;
+  margin-bottom: 24rpx;
+}
+.login-empty-btn {
+  height: 72rpx;
+  min-width: 180rpx;
+  border-radius: 10rpx;
+  background: #0F4C81;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24rpx;
+}
+.login-empty-btn-text {
+  color: #FFFFFF;
+  font-size: 28rpx;
+  font-weight: 600;
+}
 
 .tabs {
   display: flex;
@@ -296,6 +490,8 @@ onPageScroll((e) => {
   border-bottom: 1rpx solid #E2E8F0;
   overflow-x: auto;
   white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .tabs-wrap {
   background: #FFFFFF;
@@ -305,6 +501,8 @@ onPageScroll((e) => {
   display: flex;
   overflow-x: auto;
   white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .tab-item {
   position: relative;
@@ -313,6 +511,14 @@ onPageScroll((e) => {
   font-size: 28rpx;
   cursor: pointer;
   flex-shrink: 0;
+}
+.tab-count {
+  margin-left: 8rpx;
+  font-size: 20rpx;
+  color: #94A3B8;
+}
+.tab-item.active .tab-count {
+  color: #1D4ED8;
 }
 .tab-item.active {
   color: #004178;
@@ -342,6 +548,46 @@ onPageScroll((e) => {
   display: flex;
   align-items: center;
   gap: 10rpx;
+}
+.sub-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 12rpx;
+  padding: 8rpx 24rpx 16rpx;
+  border-bottom: 1rpx solid #E2E8F0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tabs::-webkit-scrollbar,
+.tabs-items-wrap::-webkit-scrollbar,
+.sub-tabs::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.sub-tab-item {
+  flex-shrink: 0;
+  padding: 10rpx 7rpx;
+}
+.sub-tab-item.active {
+  background: transparent;
+}
+.sub-tab-text {
+  font-size: 22rpx;
+  color: #475569;
+}
+.sub-tab-count {
+  margin-left: 2rpx;
+  font-size: 20rpx;
+  color: #94A3B8;
+}
+.sub-tab-item.active .sub-tab-text {
+  color: #1D4ED8;
+  font-weight: 600;
+}
+.sub-tab-item.active .sub-tab-count {
+  color: #1D4ED8;
 }
 .tabs-search-input {
   flex: 1;
@@ -419,15 +665,23 @@ onPageScroll((e) => {
   border-radius: 8rpx;
 }
 .st-pending { background: rgba(0, 65, 120, 0.1); }
-.st-paid { background: rgba(16, 185, 129, 0.15); }
+.st-wait-production { background: rgba(245, 158, 11, 0.15); }
+.st-in-production { background: rgba(6, 182, 212, 0.15); }
+.st-wait-shipment { background: rgba(59, 130, 246, 0.12); }
 .st-shipped { background: rgba(59, 130, 246, 0.15); }
 .st-completed { background: rgba(139, 92, 246, 0.15); }
 .st-cancelled { background: rgba(100, 116, 139, 0.15); }
+.st-after-sale { background: rgba(236, 72, 153, 0.14); }
+.st-rejected { background: rgba(239, 68, 68, 0.12); }
 .st-pending .status-text { color: #004178; }
-.st-paid .status-text { color: #10B981; }
+.st-wait-production .status-text { color: #D97706; }
+.st-in-production .status-text { color: #0891B2; }
+.st-wait-shipment .status-text { color: #2563EB; }
 .st-shipped .status-text { color: #3B82F6; }
 .st-completed .status-text { color: #8B5CF6; }
 .st-cancelled .status-text { color: #64748B; }
+.st-after-sale .status-text { color: #DB2777; }
+.st-rejected .status-text { color: #DC2626; }
 .status-text { font-size: 22rpx; font-weight: 600; }
 
 .order-mid {

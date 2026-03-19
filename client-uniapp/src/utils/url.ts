@@ -1,13 +1,9 @@
 function isH5Runtime(): boolean {
   return typeof window !== "undefined" && typeof document !== "undefined";
 }
-
 export function getApiBaseUrl(): string {
-  if (isH5Runtime()) {
-    // H5 uses Vite proxy in development.
-    return "";
-  }
-  return (uni.getStorageSync("baseUrl") as string) || "http://localhost:8080";
+  if (isH5Runtime()) return "";
+  return "https://6cb4605b.r39.cpolar.top";
 }
 
 export function toAbsoluteAssetUrl(url?: string): string {

@@ -1,11 +1,15 @@
 <template>
   <view class="address-container">
     <OfficialHeader />
-    <view class="content-wrapper">
-      <view class="page-header">
+      <view class="content-wrapper">
+      <view class="page-header" :style="mpPageHeaderStyle">
+        <view class="header-left" @click="goBackBySource">
+          <image class="back-arrow" src="/static/icons/right.svg" mode="aspectFit" />
+        </view>
         <text class="page-title">收货地址管理</text>
         <button class="add-btn" @click="goToAdd">新增地址</button>
       </view>
+      <view class="page-header-spacer" :style="mpPageHeaderSpacerStyle"></view>
 
       <view v-if="loading" class="loading-state">
         <uni-load-more status="loading" />
@@ -41,12 +45,14 @@
         </view>
       </view>
     </view>
+    <!-- #ifdef H5 -->
     <OfficialFooter />
+    <!-- #endif -->
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { getCurrentInstance, nextTick, ref } from 'vue';
 import { onLoad, onUnload } from '@dcloudio/uni-app';
 import type { Address } from '@/api/address';
 import { getAddresses, deleteAddress, setDefaultAddress } from '@/api/address';
@@ -56,6 +62,10 @@ import OfficialFooter from '@/components/OfficialFooter/OfficialFooter.vue';
 const addresses = ref<Address[]>([]);
 const loading = ref(true);
 const ADDRESS_UPDATED_EVENT = 'addressUpdated';
+const source = ref<'cart' | 'profile' | ''>('');
+const mpPageHeaderStyle = ref<Record<string, string>>({});
+const mpPageHeaderSpacerStyle = ref<Record<string, string>>({});
+const instance = getCurrentInstance();
 
 // If opened from checkout, we return the selected address
 const isSelectionMode = ref(false);
@@ -75,8 +85,53 @@ onLoad((options: any) => {
   if (options && options.mode === 'select') {
     isSelectionMode.value = true;
   }
+  if (options?.from === 'cart' || options?.from === 'profile') {
+    source.value = options.from;
+  } else if (isSelectionMode.value) {
+    source.value = 'cart';
+  }
   loadAddresses();
+  // #ifndef H5
+  nextTick(() => {
+    syncMpPageHeaderLayout();
+  });
+  // #endif
 });
+
+function syncMpPageHeaderLayout() {
+  // #ifdef H5
+  return;
+  // #endif
+  const query = uni.createSelectorQuery().in(instance?.proxy as any);
+  query.select(".mp-header-spacer").boundingClientRect();
+  query.select(".page-header").boundingClientRect();
+  query.exec((res: any[]) => {
+    const headerSpacerHeight = Number(res?.[0]?.height || 0);
+    const pageHeaderHeight = Number(res?.[1]?.height || 0);
+    if (headerSpacerHeight > 0) {
+      mpPageHeaderStyle.value = { top: `${Math.ceil(headerSpacerHeight)}px` };
+    }
+    if (pageHeaderHeight > 0) {
+      mpPageHeaderSpacerStyle.value = { height: `${Math.ceil(pageHeaderHeight + 8)}px` };
+    }
+  });
+}
+
+function goBackBySource() {
+  if (source.value === 'cart' || isSelectionMode.value) {
+    uni.switchTab({ url: '/pages/cart/cart' });
+    return;
+  }
+  if (source.value === 'profile') {
+    uni.switchTab({ url: '/pages/profile/profile' });
+    return;
+  }
+  uni.navigateBack({
+    fail: () => {
+      uni.switchTab({ url: '/pages/profile/profile' });
+    }
+  });
+}
 
 const goToAdd = () => {
   uni.navigateTo({
@@ -168,6 +223,21 @@ onUnload(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  background: #f5f7fa;
+}
+
+.header-left {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-arrow {
+  width: 50rpx;
+  height: 50rpx;
+  transform: rotate(180deg);
 }
 
 .page-title {
@@ -313,6 +383,37 @@ onUnload(() => {
 .delete-btn {
   color: #f56c6c;
 }
+
+/* #ifndef H5 */
+.content-wrapper {
+  padding: 0 16rpx;
+}
+.page-header {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin-bottom: 0;
+  background: #ffffff;
+  padding: 8rpx 16rpx;
+  border-bottom: 1rpx solid #e2e8f0;
+}
+.page-title {
+  flex: 1;
+  text-align: center;
+  font-size: 34rpx;
+  color: #0f172a;
+}
+.add-btn {
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 24rpx;
+}
+.page-header-spacer {
+  width: 100%;
+}
+/* #endif */
 
 @media (max-width: 768px) {
   .address-list {

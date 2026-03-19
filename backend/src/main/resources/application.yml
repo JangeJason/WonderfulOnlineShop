@@ -44,8 +44,31 @@ sa-token:
 
 app:
   upload-dir: uploads
+  upload-cleanup:
+    enabled: true
+    # 每天凌晨 03:30 清理一次无引用文件
+    cron: "0 30 3 * * ?"
+    # 仅删除最后修改时间超过 N 小时且数据库无引用的文件
+    delete-older-than-hours: 48
+    # true 时只输出日志，不实际删除
+    dry-run: false
+  operation-log-cleanup:
+    enabled: true
+    # 每天凌晨 03:45 清理一次操作日志
+    cron: "0 45 3 * * ?"
+    # 操作日志保留天数
+    retain-days: 180
+    # true 时只打印清理信息，不实际删除
+    dry-run: false
 
 wechat:
   miniapp:
-    appid: "wxa5a6e72a40532529"
-    secret: "c4073fdae487d370927c6865188e229b"
+    appid: "wxd55b2c2fbde2dc74"
+    secret: "a561782d9c960fdbcdfdc28081690358"
+  pay:
+    enabled: false
+    mch-id: "1741346999"
+    serial-no: "311D8905C067C7DF751277B38B6A059F5AEC12F8"
+    private-key-path: "/Users/jangejason/cert/1741346999_20260319_cert/apiclient_key.pem"
+    api-v3-key: "Wujiang5201314523645121212523645"
+    notify-url: "https://millesimal-tommie-catrigged.ngrok-free.dev/api/pay/wechat/notify"

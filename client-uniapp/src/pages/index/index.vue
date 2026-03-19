@@ -1,6 +1,6 @@
 <template>
   <view class="home-page">
-    <OfficialHeader />
+    <OfficialHeader @open-config-code="onHeaderOpenConfigCode" />
 
     <view class="page-container">
       <view class="content-wrapper">
@@ -100,13 +100,6 @@
       <!-- #endif -->
     </view>
 
-    <!-- 促销横幅占位 (Amazon-style hero) -->
-    <view class="banner-area">
-      <view class="banner">
-        <text class="banner-text">🔥 发现当季热门商品</text>
-      </view>
-    </view>
-
     <!-- 面包屑导航 -->
     <view class="breadcrumb-container" v-if="currentCategoryPath.length > 0">
       <view class="breadcrumb">
@@ -203,7 +196,12 @@
       <text class="back-top-text">顶部</text>
     </view>
 
+    <!-- #ifdef MP-WEIXIN -->
+    <CustomTabBar />
+    <!-- #endif -->
+    <!-- #ifdef H5 -->
     <OfficialFooter />
+    <!-- #endif -->
   </view>
 </template>
 
@@ -211,10 +209,10 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { onShow, onPullDownRefresh, onReachBottom, onReady, onPageScroll } from "@dcloudio/uni-app";
 import { listPublicProducts, listPublicCategories, type Product, type Category } from "../../api/product";
-import { getToken } from "../../utils/storage";
 import { toAbsoluteAssetUrl } from "../../utils/url";
 import OfficialHeader from "../../components/OfficialHeader/OfficialHeader.vue";
 import OfficialFooter from "../../components/OfficialFooter/OfficialFooter.vue";
+import CustomTabBar from "../../components/CustomTabBar/CustomTabBar.vue";
 
 const products = ref<Product[]>([]);
 const categories = ref<Category[]>([]);
@@ -235,6 +233,50 @@ type GroupedProducts = {
   products: Product[];
 };
 const groupedProductsList = ref<GroupedProducts[]>([]);
+
+function sanitizeConfigCode(raw: string): string {
+  return String(raw || "").replace(/\D/g, "").slice(0, 12);
+}
+
+async function promptConfigCodeInput(): Promise<string | null> {
+  // #ifdef MP-WEIXIN
+  return await new Promise((resolve) => {
+    uni.showModal({
+      title: "输入产品配置码",
+      editable: true,
+      placeholderText: "请输入8位数字配置码",
+      confirmText: "解析",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) {
+          resolve(null);
+          return;
+        }
+        resolve(sanitizeConfigCode((res as any).content || ""));
+      },
+      fail: () => resolve(null),
+    });
+  });
+  // #endif
+  // #ifdef H5
+  const value = window.prompt("请输入8位数字配置码", "");
+  if (!value) return null;
+  return sanitizeConfigCode(value);
+  // #endif
+  // #ifndef H5
+  return null;
+  // #endif
+}
+
+async function onHeaderOpenConfigCode() {
+  const code = await promptConfigCodeInput();
+  if (!code) return;
+  if (!/^\d{8}$/.test(code)) {
+    uni.showToast({ title: "请输入8位数字配置码", icon: "none" });
+    return;
+  }
+  uni.navigateTo({ url: `/pages/config-code-preview/config-code-preview?code=${code}` });
+}
 
 type CategoryNode = Category & { children: Category[] };
 
@@ -456,10 +498,6 @@ onPullDownRefresh(() => {
 });
 
 onShow(() => {
-  if (!getToken()) {
-    uni.reLaunch({ url: "/pages/login/login" });
-    return;
-  }
   loadCategories();
   load();
   syncMpFixedOffsets();
@@ -795,26 +833,6 @@ onUnmounted(() => {
   opacity: 0.52;
 }
 
-/* 横幅区域 */
-.banner-area {
-  padding: 24rpx 32rpx 10rpx;
-}
-.banner {
-  background: #F0F5FA; /* 淡蓝色背景 */
-  border: 1px solid #dce0e3;
-  border-radius: 4rpx;
-  padding: 30rpx 40rpx;
-  display: flex;
-  align-items: center;
-  box-shadow: none;
-}
-.banner-text {
-  color: #004178;
-  font-weight: bold;
-  font-size: 28rpx;
-  letter-spacing: 1rpx;
-}
-
 /* 双列商品网格 -> 响应式多列网格 */
 .product-grid {
   display: grid;
@@ -993,12 +1011,6 @@ onUnmounted(() => {
 }
 .header {
   margin-bottom: 0;
-}
-.banner-area {
-  padding: 8rpx 8rpx 8rpx;
-}
-.banner {
-  border: none;
 }
 .product-grid {
   gap: 8rpx;

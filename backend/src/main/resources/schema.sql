@@ -99,13 +99,23 @@ CREATE TABLE IF NOT EXISTS orders (
     user_id BIGINT NOT NULL,
     total_amount DECIMAL(10, 2) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    production_status VARCHAR(30),
+    shipping_status VARCHAR(30),
+    review_status VARCHAR(20) DEFAULT 'PENDING',
+    review_reason VARCHAR(500),
+    reviewed_by BIGINT,
+    reviewed_at TIMESTAMP NULL,
     custom_name VARCHAR(100),
     remark VARCHAR(500),
     receiver_name VARCHAR(50),
     receiver_phone VARCHAR(20),
     receiver_address VARCHAR(255),
+    out_trade_no VARCHAR(64),
+    pay_channel VARCHAR(20),
+    paid_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_orders_out_trade_no (out_trade_no)
 );
 
 CREATE TABLE IF NOT EXISTS order_item (
@@ -147,4 +157,75 @@ CREATE TABLE IF NOT EXISTS user_certificate (
     file_urls TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS product_config_code (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(16) NOT NULL,
+    creator_user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    params_snapshot TEXT NOT NULL,
+    expire_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_product_config_code_code (code),
+    KEY idx_product_config_code_creator_created (creator_user_id, created_at),
+    KEY idx_product_config_code_product (product_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_favorite_product (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_favorite_product (user_id, product_id),
+    KEY idx_user_favorite_product_user_created (user_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS user_favorite_config_code (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    config_code_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_favorite_config_code (user_id, config_code_id),
+    KEY idx_user_favorite_config_code_user_created (user_id, created_at),
+    KEY idx_user_favorite_config_code_product (product_id)
+);
+
+CREATE TABLE IF NOT EXISTS after_sale_request (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    item_ids_json TEXT NOT NULL,
+    request_type VARCHAR(40) NOT NULL,
+    detail_text TEXT,
+    image_urls TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    admin_remark VARCHAR(500),
+    user_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_after_sale_order (order_id),
+    KEY idx_after_sale_user_created (user_id, created_at),
+    KEY idx_after_sale_status_created (status, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS admin_operation_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    admin_user_id BIGINT NOT NULL,
+    admin_nickname VARCHAR(100),
+    admin_company_name VARCHAR(100),
+    module_name VARCHAR(50) NOT NULL,
+    action_name VARCHAR(50) NOT NULL,
+    http_method VARCHAR(10) NOT NULL,
+    request_path VARCHAR(255) NOT NULL,
+    target_id BIGINT NULL,
+    summary VARCHAR(500),
+    ip_address VARCHAR(64),
+    user_agent VARCHAR(300),
+    status_code INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_admin_oplog_admin_created (admin_user_id, created_at),
+    KEY idx_admin_oplog_module_created (module_name, created_at),
+    KEY idx_admin_oplog_created (created_at)
 );

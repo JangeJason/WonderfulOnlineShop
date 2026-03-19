@@ -15,6 +15,12 @@ public class OrderListDTO extends Order {
         this.setUserId(order.getUserId());
         this.setTotalAmount(order.getTotalAmount());
         this.setStatus(order.getStatus());
+        this.setProductionStatus(order.getProductionStatus());
+        this.setShippingStatus(order.getShippingStatus());
+        this.setReviewStatus(order.getReviewStatus());
+        this.setReviewReason(order.getReviewReason());
+        this.setReviewedBy(order.getReviewedBy());
+        this.setReviewedAt(order.getReviewedAt());
         this.setCustomName(order.getCustomName());
         this.setRemark(order.getRemark());
         this.setReceiverName(order.getReceiverName());

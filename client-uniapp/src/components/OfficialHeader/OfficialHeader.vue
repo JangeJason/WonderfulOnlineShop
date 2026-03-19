@@ -104,8 +104,13 @@
           <text class="mp-title">环地福在线商城</text>
         </view>
         <!-- #ifdef MP-WEIXIN -->
-        <view class="mp-search-trigger" v-if="showMpSearchTrigger" @click="toggleMpSearch">
-          <image class="mp-search-icon" :src="isMpSearchOpen ? '/static/icons/close.svg' : '/static/icons/search.svg'" mode="aspectFit" />
+        <view class="mp-header-actions">
+          <view class="mp-config-trigger" v-if="showMpConfigTrigger" @click="onOpenConfigCode">
+            <image class="mp-config-icon" src="/static/icons/share.svg" mode="aspectFit" />
+          </view>
+          <view class="mp-search-trigger" v-if="showMpSearchTrigger" @click="toggleMpSearch">
+            <image class="mp-search-icon" :src="isMpSearchOpen ? '/static/icons/close.svg' : '/static/icons/search.svg'" mode="aspectFit" />
+          </view>
         </view>
         <!-- #endif -->
       </view>
@@ -136,7 +141,11 @@ const mpHeaderSpacerStyle = ref<Record<string, string>>({});
 const mpHeaderTopStyle = ref<Record<string, string>>({});
 const isMpSearchOpen = ref(false);
 const showMpSearchTrigger = ref(true);
+const showMpConfigTrigger = ref(true);
 const instance = getCurrentInstance();
+const emit = defineEmits<{
+  (e: "open-config-code"): void;
+}>();
 
 function avatarSrc() {
   return toAbsoluteAssetUrl(userAvatar.value);
@@ -180,11 +189,17 @@ function toggleMpSearch() {
   setTimeout(syncMpHeaderSpacer, 0);
 }
 
+function onOpenConfigCode() {
+  emit("open-config-code");
+}
+
 function syncMpSearchVisibility() {
   // #ifdef MP-WEIXIN
   const pages = getCurrentPages();
   const route = pages[pages.length - 1]?.route || "";
-  showMpSearchTrigger.value = route === "pages/index/index";
+  const isHome = route === "pages/index/index";
+  showMpSearchTrigger.value = isHome;
+  showMpConfigTrigger.value = isHome;
   if (!showMpSearchTrigger.value) {
     isMpSearchOpen.value = false;
   }
@@ -502,12 +517,28 @@ onShow(() => {
   color: #004178;
 }
 .mp-search-trigger {
-  margin-left: auto;
   width: 56rpx;
   height: 56rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.mp-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.mp-config-trigger {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mp-config-icon {
+  width: 32rpx;
+  height: 32rpx;
 }
 .mp-search-icon {
   width: 34rpx;

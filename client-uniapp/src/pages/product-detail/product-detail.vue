@@ -9,6 +9,9 @@
         <view class="header-back-btn" @click="onBackTap">
           <image class="header-back-icon" src="/static/icons/right.svg" mode="aspectFit" />
         </view>
+        <view class="header-favorite-btn" @click="toggleProductFavorite">
+          <image class="header-favorite-icon" :src="favoriteIconSrc" mode="aspectFit" />
+        </view>
         <text class="header-meta-item header-meta-name">{{ product?.name || "-" }}</text>
         <text class="header-meta-dot">·</text>
         <text class="header-meta-item">基础价: ¥{{ product?.basePrice }}</text>
@@ -55,8 +58,13 @@
         <view class="mp-hero-count" v-if="productImages.length > 1">
           {{ currentHeroIndex + 1 }}/{{ productImages.length }}
         </view>
-        <view class="mp-hero-back" @click="onBackTap">
-          <image class="mp-hero-back-icon" src="/static/icons/right.svg" mode="aspectFit" />
+        <view class="mp-hero-left-actions">
+          <view class="mp-hero-back" @click="onBackTap">
+            <image class="mp-hero-back-icon" src="/static/icons/right.svg" mode="aspectFit" />
+          </view>
+          <view class="mp-hero-favorite" @click="toggleProductFavorite">
+            <image class="mp-hero-favorite-icon" :src="favoriteIconSrc" mode="aspectFit" />
+          </view>
         </view>
       </view>
       <view class="mp-product-meta">
@@ -84,8 +92,11 @@
     <!-- 参数配置 -->
     <view class="section" v-if="visibleParams.length > 0">
       <view class="section-head">
-        <view class="section-bar"></view>
-        <text class="section-title">参数配置</text>
+        <view class="section-head-left">
+          <view class="section-bar"></view>
+          <text class="section-title">参数配置</text>
+        </view>
+        <view class="section-code-btn" @click="onApplyConfigCode">输入配置码</view>
       </view>
       <view v-for="param in visibleParams" :key="param.id" class="param-group">
         <view class="param-header">
@@ -138,8 +149,10 @@
     <!-- 数量 -->
     <view class="section">
       <view class="section-head">
-        <view class="section-bar"></view>
-        <text class="section-title">购买数量</text>
+        <view class="section-head-left">
+          <view class="section-bar"></view>
+          <text class="section-title">购买数量</text>
+        </view>
       </view>
       <view class="qty-control">
         <view class="qty-btn" :class="{ disabled: quantity <= 1 }" @click="changeQty(-1)">
@@ -158,8 +171,10 @@
     <!-- 设计文件上传 -->
     <view class="section">
       <view class="section-head">
-        <view class="section-bar"></view>
-        <text class="section-title">设计文件上传（可选）</text>
+        <view class="section-head-left">
+          <view class="section-bar"></view>
+          <text class="section-title">设计文件上传（可选）</text>
+        </view>
       </view>
       <view class="upload-item">
         <text class="upload-label">印品文件（可选）</text>
@@ -208,13 +223,16 @@
           </view>
         </view>
       </view>
+      <text class="design-upload-tip">无印品文件时，客服会与您联系进行产品设计，请留意电话</text>
     </view>
 
     <!-- 版权问题声明 -->
     <view class="section">
       <view class="section-head">
-        <view class="section-bar"></view>
-        <text class="section-title">版权相关</text>
+        <view class="section-head-left">
+          <view class="section-bar"></view>
+          <text class="section-title">版权相关</text>
+        </view>
       </view>
       <view class="copyright-row">
         <text class="copyright-label">是否存在版权问题？</text>
@@ -352,8 +370,13 @@
           <text class="bar-total">¥{{ quoteResult.totalPrice }}</text>
         </view>
       </view>
-      <view class="bar-action" :class="{ disabled: adding }" @click="onAddToCart">
-        <text class="action-text">{{ adding ? '提交中...' : (editingCartItemId ? '保存修改' : '加入购物车') }}</text>
+      <view class="bar-actions">
+        <view class="bar-config-code-btn" @click="onGenerateConfigCode">
+          <text class="bar-config-code-text">生成配置码</text>
+        </view>
+        <view class="bar-action" :class="{ disabled: adding }" @click="onAddToCart">
+          <text class="action-text">{{ adding ? '提交中...' : (isEditingExistingItem ? '保存修改' : '加入购物车') }}</text>
+        </view>
       </view>
     </view>
 
@@ -393,7 +416,10 @@ import {
 } from "../../api/product";
 import { quote, type QuoteResponse } from "../../api/quote";
 import { addCartItem, listCartItems, removeCartItem } from "../../api/cart";
+import { getOrderDetail, updateRejectedOrderItem } from "../../api/order";
 import { createCommonCertificate, listCommonCertificates, updateCommonCertificate, type UserCertificate } from "../../api/certificate";
+import { createProductConfigCode, resolveProductConfigCode } from "../../api/config-code";
+import { favoriteConfigCode, favoriteProduct, getProductFavoriteStatus, unfavoriteProduct } from "../../api/favorite";
 import { getMe } from "../../api/auth";
 import { getToken } from "../../utils/storage";
 import { getApiBaseUrl, toAbsoluteAssetUrl } from "../../utils/url";
@@ -435,13 +461,28 @@ const certForm = reactive({
   endDate: "",
 });
 const editingCartItemId = ref<number | null>(null);
-const entrySource = ref<"home" | "cart" | "unknown">("unknown");
+const editingOrderId = ref<number | null>(null);
+const editingOrderItemId = ref<number | null>(null);
+const entrySource = ref<"home" | "cart" | "favorites" | "order" | "unknown">("unknown");
 const shareUserName = ref("用户");
 const showAddCartPopup = ref(false);
+const isProductFavorited = ref(false);
+const favoriteLoading = ref(false);
+const favoriteConfigCodeCount = ref(0);
 const materialParameterId = ref<number | null>(null);
 const enabledDynamicParamIds = ref<number[]>([]);
 const enabledOptionIds = ref<Record<number, number[]>>({});
 const currentHeroIndex = ref(0);
+const pendingConfigCode = ref<string>("");
+const shouldAutoApplyConfigCode = ref(false);
+const CONFIG_EXPIRE_OPTIONS = [
+  { label: "1 天", days: 1 },
+  { label: "7 天", days: 7 },
+  { label: "14 天", days: 14 },
+  { label: "30 天", days: 30 },
+  { label: "90 天", days: 90 },
+  { label: "永久", days: 0 },
+];
 const productImages = computed<string[]>(() => {
   const current = product.value;
   if (!current) return [];
@@ -450,6 +491,10 @@ const productImages = computed<string[]>(() => {
   }
   return current.imageUrl ? [current.imageUrl] : [];
 });
+const favoriteIconSrc = computed(() =>
+  isProductFavorited.value ? "/static/icons/favourite-filled.svg" : "/static/icons/favourite.svg"
+);
+const isEditingExistingItem = computed(() => !!editingCartItemId.value || !!editingOrderItemId.value);
 
 const visibleParams = computed<ProductParameter[]>(() => {
   return params.value.filter((p) => {
@@ -881,10 +926,22 @@ onLoad((query: any) => {
   productId = Number(query.id);
   const cartItemId = Number(query.cartItemId || 0);
   editingCartItemId.value = Number.isFinite(cartItemId) && cartItemId > 0 ? cartItemId : null;
-  if (query.source === "home" || query.source === "cart") {
+  const orderIdFromQuery = Number(query.orderId || 0);
+  const orderItemIdFromQuery = Number(query.orderItemId || 0);
+  editingOrderId.value = Number.isFinite(orderIdFromQuery) && orderIdFromQuery > 0 ? orderIdFromQuery : null;
+  editingOrderItemId.value = Number.isFinite(orderItemIdFromQuery) && orderItemIdFromQuery > 0 ? orderItemIdFromQuery : null;
+  if (query.source === "home" || query.source === "cart" || query.source === "favorites" || query.source === "order") {
     entrySource.value = query.source;
+  } else if (editingOrderItemId.value && editingOrderId.value) {
+    entrySource.value = "order";
   } else if (editingCartItemId.value) {
     entrySource.value = "cart";
+  }
+  if (typeof query.configCode === "string" && query.configCode.trim()) {
+    pendingConfigCode.value = query.configCode.trim();
+  }
+  if (String(query.autoApply || "") === "1") {
+    shouldAutoApplyConfigCode.value = true;
   }
   loadShareUserName();
   loadData();
@@ -908,14 +965,34 @@ async function loadData() {
         paramOptions[p.id] = await getParameterOptions(p.id);
       }
     }
-    if (editingCartItemId.value) {
+    if (editingOrderId.value && editingOrderItemId.value) {
+      await preloadFromOrderItem(editingOrderId.value, editingOrderItemId.value);
+    } else if (editingCartItemId.value) {
       await preloadFromCartItem(editingCartItemId.value);
     }
     await refreshMaterialConfig(getCurrentMaterialOptionId());
     sanitizeSelectionsByMaterialConfig();
     doQuote();
+    await loadProductFavoriteStatus();
+    if (pendingConfigCode.value) {
+      await handleResolvedConfigCode(pendingConfigCode.value, shouldAutoApplyConfigCode.value);
+      pendingConfigCode.value = "";
+      shouldAutoApplyConfigCode.value = false;
+    }
   } catch (e: any) {
     uni.showToast({ title: e?.message || "加载失败", icon: "none" });
+  }
+}
+
+async function loadProductFavoriteStatus() {
+  if (!productId) return;
+  try {
+    const res = await getProductFavoriteStatus(productId);
+    isProductFavorited.value = !!res.favorited;
+    favoriteConfigCodeCount.value = Number(res.favoriteConfigCodeCount || 0);
+  } catch {
+    isProductFavorited.value = false;
+    favoriteConfigCodeCount.value = 0;
   }
 }
 
@@ -972,6 +1049,57 @@ async function preloadFromCartItem(cartItemId: number) {
     doQuote();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "加载购物车配置失败", icon: "none" });
+  }
+}
+
+async function preloadFromOrderItem(targetOrderId: number, targetOrderItemId: number) {
+  try {
+    const detail = await getOrderDetail(targetOrderId);
+    if (!detail?.order || detail.order.status !== "REJECTED") {
+      uni.showToast({ title: "仅待修改订单可编辑", icon: "none" });
+      return;
+    }
+    const current = (detail.items || []).find((item) => Number(item.id) === Number(targetOrderItemId));
+    if (!current) {
+      uni.showToast({ title: "订单商品不存在", icon: "none" });
+      return;
+    }
+    quantity.value = Math.max(1, Number(current.quantity || 1));
+    printFileUrl.value = current.printFileUrl || "";
+    printFileName.value = "";
+    proofFileUrl.value = current.proofFileUrl || "";
+    proofFileName.value = "";
+    hasCopyright.value = !!current.hasCopyright;
+    copyrightFileUrl.value = current.copyrightFileUrl || "";
+    if (current.paramsSnapshot) {
+      const snapshot = JSON.parse(current.paramsSnapshot);
+      printFileName.value = getSnapshotFileName(current.paramsSnapshot, "print")
+        || (current.printFileUrl ? getFilenameFromPath(current.printFileUrl) : "");
+      proofFileName.value = getSnapshotFileName(current.paramsSnapshot, "proof")
+        || (current.proofFileUrl ? getFilenameFromPath(current.proofFileUrl) : "");
+      const snapshotParams = Array.isArray(snapshot?.params) ? snapshot.params : [];
+      for (const p of params.value) {
+        const matched = snapshotParams.find((sp: any) =>
+          Number(sp?.parameterId || 0) === p.id || sp?.name === p.paramName || sp?.code === p.paramName
+        );
+        if (!matched) continue;
+        const resolved = getSnapshotValueForParam(matched, p);
+        if (resolved !== undefined) {
+          formValues[p.paramName] = resolved;
+        }
+      }
+      if (snapshot?.certificate) {
+        selectedCertificate.value = snapshot.certificate as UserCertificate;
+      }
+    } else {
+      printFileName.value = current.printFileUrl ? getFilenameFromPath(current.printFileUrl) : "";
+      proofFileName.value = current.proofFileUrl ? getFilenameFromPath(current.proofFileUrl) : "";
+    }
+    await refreshMaterialConfig(getCurrentMaterialOptionId());
+    sanitizeSelectionsByMaterialConfig();
+    doQuote();
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || "加载订单配置失败", icon: "none" });
   }
 }
 
@@ -1129,6 +1257,291 @@ function doQuote() {
 
 function hasValidationErrors(): boolean {
   return Object.values(validationErrors).some((e) => e !== '');
+}
+
+function sanitizeConfigCode(raw: string): string {
+  return String(raw || "").replace(/\D/g, "").slice(0, 12);
+}
+
+async function promptConfigCodeInput(): Promise<string | null> {
+  // #ifdef MP-WEIXIN
+  return await new Promise((resolve) => {
+    uni.showModal({
+      title: "输入产品配置码",
+      editable: true,
+      placeholderText: "请输入8位数字配置码",
+      confirmText: "解析",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) {
+          resolve(null);
+          return;
+        }
+        resolve(sanitizeConfigCode((res as any).content || ""));
+      },
+      fail: () => resolve(null),
+    });
+  });
+  // #endif
+  // #ifdef H5
+  const value = window.prompt("请输入8位数字配置码", "");
+  if (!value) return null;
+  return sanitizeConfigCode(value);
+  // #endif
+  // #ifndef H5
+  return null;
+  // #endif
+}
+
+async function pickConfigCodeExpireDays(): Promise<number | null> {
+  const labels = CONFIG_EXPIRE_OPTIONS.map((o) => o.label);
+  return await new Promise((resolve) => {
+    uni.showActionSheet({
+      itemList: labels,
+      success: (res) => resolve(CONFIG_EXPIRE_OPTIONS[res.tapIndex]?.days ?? null),
+      fail: () => resolve(null),
+    });
+  });
+}
+
+function buildConfigShareSnapshot() {
+  const activeParams = getActiveParamsForQuote();
+  return {
+    productName: product.value?.name,
+    params: activeParams.map((p) => {
+      const raw = formValues[p.paramName];
+      const value = raw === undefined || raw === "" ? null : raw;
+      return {
+        parameterId: p.id,
+        name: p.paramName,
+        code: p.paramName,
+        value,
+      };
+    }),
+  };
+}
+
+function buildConfigShareSummaryContent(resolved: {
+  creatorName: string;
+  productName: string;
+  code: string;
+  expireAt?: string | null;
+}): string {
+  const lines = [
+    `分享人：${resolved.creatorName}`,
+    `产品：${resolved.productName}`,
+    `配置码：${resolved.code}`,
+  ];
+  if (resolved.expireAt) {
+    lines.push(`有效期至：${String(resolved.expireAt).replace("T", " ").slice(0, 16)}`);
+  } else {
+    lines.push("有效期：永久");
+  }
+  return lines.join("\n");
+}
+
+async function applyConfigSnapshot(paramsSnapshot: string, creatorName?: string) {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(paramsSnapshot);
+  } catch {
+    throw new Error("配置快照格式无效");
+  }
+  const snapshotParams: any[] = Array.isArray(parsed?.params) ? parsed.params : [];
+  const findSnapshot = (param: ProductParameter) =>
+    snapshotParams.find((sp: any) =>
+      Number(sp?.parameterId || 0) === param.id || sp?.name === param.paramName || sp?.code === param.paramName
+    );
+
+  const materialParam = getMaterialParam();
+  if (materialParam) {
+    const materialSnapshot = findSnapshot(materialParam);
+    if (materialSnapshot) {
+      const materialValue = getSnapshotValueForParam(materialSnapshot, materialParam);
+      if (materialValue === undefined || materialValue === null || materialValue === "") {
+        delete formValues[materialParam.paramName];
+      } else {
+        formValues[materialParam.paramName] = materialValue;
+      }
+    } else {
+      delete formValues[materialParam.paramName];
+    }
+  }
+
+  await refreshMaterialConfig(getCurrentMaterialOptionId());
+
+  for (const p of params.value) {
+    if (materialParam && p.id === materialParam.id) continue;
+    const snapshotParam = findSnapshot(p);
+    if (!snapshotParam) {
+      delete formValues[p.paramName];
+      continue;
+    }
+    const resolved = getSnapshotValueForParam(snapshotParam, p);
+    if (resolved === undefined || resolved === null || resolved === "") {
+      delete formValues[p.paramName];
+    } else {
+      formValues[p.paramName] = resolved;
+    }
+  }
+
+  sanitizeSelectionsByMaterialConfig(true);
+  doQuote();
+  uni.showToast({ title: creatorName ? `已应用 ${creatorName} 的配置` : "已应用配置", icon: "success" });
+}
+
+async function handleResolvedConfigCode(code: string, autoApply = false) {
+  if (!/^\d{8}$/.test(code)) {
+    uni.showToast({ title: "请输入8位数字配置码", icon: "none" });
+    return;
+  }
+  const resolved = await resolveProductConfigCode(code);
+
+  if (resolved.productId !== productId) {
+    if (autoApply) {
+      uni.redirectTo({
+        url: `/pages/product-detail/product-detail?id=${resolved.productId}&source=home&configCode=${resolved.code}&autoApply=1`,
+      });
+      return;
+    }
+    uni.showModal({
+      title: "配置码对应其他商品",
+      content: `${resolved.creatorName} 分享的是「${resolved.productName}」，是否跳转并应用？`,
+      confirmText: "跳转应用",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) return;
+        uni.redirectTo({
+          url: `/pages/product-detail/product-detail?id=${resolved.productId}&source=home&configCode=${resolved.code}&autoApply=1`,
+        });
+      },
+    });
+    return;
+  }
+
+  if (!autoApply) {
+    uni.showModal({
+      title: "配置码解析成功",
+      content: buildConfigShareSummaryContent(resolved),
+      confirmText: "应用",
+      cancelText: "取消",
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await applyConfigSnapshot(resolved.paramsSnapshot, resolved.creatorName);
+        } catch (e: any) {
+          uni.showToast({ title: e?.message || "应用配置失败", icon: "none" });
+        }
+      },
+    });
+    return;
+  }
+
+  await applyConfigSnapshot(resolved.paramsSnapshot, resolved.creatorName);
+}
+
+async function onApplyConfigCode() {
+  const code = await promptConfigCodeInput();
+  if (!code) return;
+  if (!/^\d{8}$/.test(code)) {
+    uni.showToast({ title: "请输入8位数字配置码", icon: "none" });
+    return;
+  }
+  uni.navigateTo({ url: `/pages/config-code-preview/config-code-preview?code=${code}` });
+}
+
+async function onGenerateConfigCode() {
+  if (!product.value) {
+    uni.showToast({ title: "商品信息未加载完成", icon: "none" });
+    return;
+  }
+  const snapshot = buildConfigShareSnapshot();
+  const hasAnySelected = (snapshot.params || []).some((p: any) => {
+    if (Array.isArray(p.value)) return p.value.length > 0;
+    return p.value !== null && p.value !== undefined && p.value !== "";
+  });
+  if (!hasAnySelected) {
+    uni.showToast({ title: "请先选择至少一个参数", icon: "none" });
+    return;
+  }
+  const expireDays = await pickConfigCodeExpireDays();
+  if (expireDays == null) return;
+  try {
+    const result = await createProductConfigCode(productId, JSON.stringify(snapshot), expireDays);
+    const expireText = result.expireAt
+      ? String(result.expireAt).replace("T", " ").slice(0, 16)
+      : "永久";
+    uni.showModal({
+      title: "配置码生成成功",
+      content: `配置码：${result.code}\n有效期：${expireText}`,
+      confirmText: "复制",
+      cancelText: "收藏",
+      success: async (res) => {
+        if (res.confirm) {
+          uni.setClipboardData({
+            data: result.code,
+            success: () => uni.showToast({ title: "已复制配置码", icon: "success" }),
+          });
+          return;
+        }
+        if (!res.cancel) return;
+        try {
+          await favoriteConfigCode(result.code);
+          isProductFavorited.value = true;
+          favoriteConfigCodeCount.value += 1;
+          uni.showToast({ title: "已收藏配置码", icon: "success" });
+        } catch (e: any) {
+          uni.showToast({ title: e?.message || "收藏失败", icon: "none" });
+        }
+      },
+    });
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || "生成配置码失败", icon: "none" });
+  }
+}
+
+async function toggleProductFavorite() {
+  if (!productId || favoriteLoading.value) return;
+  favoriteLoading.value = true;
+  try {
+    if (isProductFavorited.value) {
+      if (favoriteConfigCodeCount.value > 0) {
+        const shouldDeleteAll = await new Promise<boolean>((resolve) => {
+          uni.showModal({
+            title: "取消收藏",
+            content: `此商品收藏有 ${favoriteConfigCodeCount.value} 个配置码，是否删除收藏？删除会同步删除配置码。`,
+            confirmText: "不删除了",
+            cancelText: "全部删除",
+            success: (res) => resolve(!!res.cancel),
+            fail: () => resolve(false),
+          });
+        });
+        if (!shouldDeleteAll) {
+          return;
+        }
+        await unfavoriteProduct(productId, true);
+        if (shouldDeleteAll) {
+          isProductFavorited.value = false;
+          favoriteConfigCodeCount.value = 0;
+          uni.showToast({ title: "已删除收藏", icon: "none" });
+        }
+      } else {
+        await unfavoriteProduct(productId);
+        isProductFavorited.value = false;
+        favoriteConfigCodeCount.value = 0;
+        uni.showToast({ title: "已取消收藏", icon: "none" });
+      }
+    } else {
+      await favoriteProduct(productId);
+      isProductFavorited.value = true;
+      await loadProductFavoriteStatus();
+      uni.showToast({ title: "已收藏商品", icon: "success" });
+    }
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || "操作失败", icon: "none" });
+  } finally {
+    favoriteLoading.value = false;
+  }
 }
 
 function onCertificateTypeChange(e: any) {
@@ -1378,6 +1791,20 @@ async function onAddToCart() {
       hasCopyright: hasCopyright.value,
       copyrightFileUrl: copyrightFileUrl.value || undefined,
     };
+    if (editingOrderId.value && editingOrderItemId.value) {
+      await updateRejectedOrderItem(editingOrderId.value, editingOrderItemId.value, {
+        quantity: payload.quantity,
+        paramsSnapshot: payload.paramsSnapshot,
+        unitPrice: Number(payload.unitPrice),
+        printFileUrl: payload.printFileUrl,
+        proofFileUrl: payload.proofFileUrl,
+        hasCopyright: payload.hasCopyright,
+        copyrightFileUrl: payload.copyrightFileUrl,
+      });
+      uni.showToast({ title: "订单修改已保存", icon: "success" });
+      setTimeout(() => onBackTap(), 400);
+      return;
+    }
     await addCartItem(payload);
     if (editingCartItemId.value) {
       try {
@@ -1408,8 +1835,22 @@ function goCartAfterAddCart() {
 }
 
 function onBackTap() {
+  if (entrySource.value === "order" || editingOrderItemId.value) {
+    if (editingOrderId.value) {
+      uni.redirectTo({ url: `/pages/order-detail/order-detail?id=${editingOrderId.value}` });
+      return;
+    }
+    uni.navigateBack({ delta: 1 });
+    return;
+  }
   if (entrySource.value === "cart" || editingCartItemId.value) {
     uni.switchTab({ url: "/pages/cart/cart" });
+    return;
+  }
+  if (entrySource.value === "favorites") {
+    uni.navigateBack({
+      fail: () => uni.navigateTo({ url: "/pages/profile-favorites/profile-favorites" }),
+    });
     return;
   }
   if (entrySource.value === "home") {
@@ -1459,6 +1900,13 @@ onShareTimeline(() => {
 }
 .upload-item + .upload-item {
   margin-top: 24rpx;
+}
+.design-upload-tip {
+  margin-top: 12rpx;
+  display: block;
+  font-size: 22rpx;
+  color: #64748B;
+  line-height: 1.5;
 }
 .upload-label {
   display: block;
@@ -1600,10 +2048,26 @@ onShareTimeline(() => {
   justify-content: center;
   flex: 0 0 auto;
 }
+.header-favorite-btn {
+  width: 54rpx;
+  height: 54rpx;
+  border-radius: 50%;
+  border: 1rpx solid #E2E8F0;
+  background: #FFFFFF;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
 .header-back-icon {
   width: 28rpx;
   height: 28rpx;
   transform: rotate(180deg);
+}
+.header-favorite-icon {
+  width: 30rpx;
+  height: 30rpx;
+  opacity: 1;
 }
 .header-meta-item {
   font-size: 26rpx;
@@ -1675,9 +2139,23 @@ onShareTimeline(() => {
   height: 750rpx;
 }
 .mp-hero-back {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mp-hero-left-actions {
   position: absolute;
   left: 24rpx;
   top: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+.mp-hero-favorite {
   width: 64rpx;
   height: 64rpx;
   border-radius: 50%;
@@ -1707,6 +2185,11 @@ onShareTimeline(() => {
   height: 50rpx;
   transform: rotate(180deg);
   filter: brightness(0) invert(1);
+}
+.mp-hero-favorite-icon {
+  width: 42rpx;
+  height: 42rpx;
+  opacity: 1;
 }
 .mp-product-meta {
   background: #FFFFFF;
@@ -1861,8 +2344,13 @@ onShareTimeline(() => {
 .section-head {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  justify-content: space-between;
   margin-bottom: 24rpx;
+}
+.section-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
 }
 .section-bar {
   width: 6rpx;
@@ -1874,6 +2362,18 @@ onShareTimeline(() => {
   font-size: 28rpx;
   font-weight: 600;
   color: #1E293B;
+}
+.section-code-btn {
+  height: 52rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid #0F4C81;
+  color: #0F4C81;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 /* 参数 */
@@ -2393,6 +2893,26 @@ onShareTimeline(() => {
 .bar-hint { font-size: 26rpx; color: #475569; }
 .bar-small { display: block; font-size: 22rpx; color: #64748B; }
 .bar-total { display: block; font-size: 36rpx; font-weight: 700; color: #F59E0B; }
+.bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.bar-config-code-btn {
+  height: 82rpx;
+  padding: 0 24rpx;
+  border-radius: 14rpx;
+  border: 1rpx solid #0F4C81;
+  color: #0F4C81;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+}
+.bar-config-code-text {
+  font-size: 24rpx;
+  font-weight: 600;
+}
 .bar-action {
   background: linear-gradient(135deg, #3B82F6, #2563EB);
   padding: 20rpx 40rpx;

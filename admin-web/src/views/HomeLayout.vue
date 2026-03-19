@@ -20,6 +20,22 @@
           <template #icon><span class="menu-icon">📋</span></template>
           订单管理
         </a-menu-item>
+        <a-menu-item key="/production">
+          <template #icon><span class="menu-icon">🏭</span></template>
+          生产管理
+        </a-menu-item>
+        <a-menu-item key="/shipping">
+          <template #icon><span class="menu-icon">🚚</span></template>
+          发货管理
+        </a-menu-item>
+        <a-menu-item key="/after-sales">
+          <template #icon><span class="menu-icon">🛠️</span></template>
+          售后处理
+        </a-menu-item>
+        <a-menu-item key="/operation-logs">
+          <template #icon><span class="menu-icon">🧾</span></template>
+          操作日志
+        </a-menu-item>
         <a-menu-item key="/quote">
           <template #icon><span class="menu-icon">💰</span></template>
           报价演示
@@ -63,6 +79,10 @@ const router = useRouter()
 const selectedKeys = computed(() => {
   const p = route.path
   if (p.startsWith('/orders')) return ['/orders']
+  if (p.startsWith('/production')) return ['/production']
+  if (p.startsWith('/shipping')) return ['/shipping']
+  if (p.startsWith('/after-sales')) return ['/after-sales']
+  if (p.startsWith('/operation-logs')) return ['/operation-logs']
   if (p.startsWith('/quote')) return ['/quote']
   if (p.startsWith('/categories')) return ['/categories']
   return ['/products']
@@ -71,6 +91,10 @@ const selectedKeys = computed(() => {
 const pageTitle = computed(() => {
   const p = route.path
   if (p.startsWith('/orders')) return '订单管理'
+  if (p.startsWith('/production')) return '生产管理'
+  if (p.startsWith('/shipping')) return '发货管理'
+  if (p.startsWith('/after-sales')) return '售后处理'
+  if (p.startsWith('/operation-logs')) return '操作日志'
   if (p.startsWith('/quote')) return '报价演示'
   if (p.startsWith('/categories')) return '分类管理'
   if (p.includes('/parameters')) return '参数配置'

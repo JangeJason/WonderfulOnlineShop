@@ -71,7 +71,6 @@
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { listPublicProducts, listPublicCategories, type Product, type Category } from "../../api/product";
-import { getToken } from "../../utils/storage";
 import { toAbsoluteAssetUrl } from "../../utils/url";
 import OfficialHeader from "../../components/OfficialHeader/OfficialHeader.vue";
 import OfficialFooter from "../../components/OfficialFooter/OfficialFooter.vue";
@@ -142,10 +141,6 @@ function goDetail(id: number) {
 }
 
 onShow(() => {
-  if (!getToken()) {
-    uni.reLaunch({ url: "/pages/login/login" });
-    return;
-  }
   loadCategories();
   load();
 });

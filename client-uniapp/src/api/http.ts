@@ -42,7 +42,8 @@ export function request<T>(method: HttpMethod, url: string, data?: any): Promise
 
         if (api.message === "not login") {
           clearToken();
-          uni.reLaunch({ url: "/pages/login/login" });
+          reject(new Error("not login"));
+          return;
         }
 
         reject(new Error(api.message || "Request failed"));

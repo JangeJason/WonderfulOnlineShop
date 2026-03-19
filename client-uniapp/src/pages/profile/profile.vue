@@ -7,18 +7,26 @@
         <view class="user-card">
           <view class="user-card-main">
             <view class="avatar">
-              <image v-if="userInfo.avatarUrl" :src="getImageUrl(userInfo.avatarUrl)" mode="aspectFill" class="avatar-img" />
-              <text v-else class="avatar-text">{{ userInfo.nickname?.charAt(0) || "U" }}</text>
+              <image v-if="isLoggedIn && userInfo.avatarUrl" :src="getImageUrl(userInfo.avatarUrl)" mode="aspectFill" class="avatar-img" />
+              <text v-else class="avatar-text">{{ isLoggedIn ? (userInfo.nickname?.charAt(0) || "U") : "?" }}</text>
             </view>
-            <view class="user-row user-row-top">
+            <view class="user-row user-row-top" v-if="isLoggedIn">
               <text class="user-nickname">{{ userInfo.nickname || "用户" }}</text>
               <text class="user-username">{{ userInfo.username ? `@${userInfo.username}` : "@-" }}</text>
             </view>
-            <view class="user-row user-row-bottom">
+            <view class="user-row user-row-bottom" v-if="isLoggedIn">
               <text class="user-company-inline">{{ userInfo.companyName || "未填写公司" }}</text>
               <text class="user-email-inline">{{ userInfo.email || "未填写邮箱" }}</text>
             </view>
-            <view class="settings-btn" @click="goSettings">
+            <view class="user-row user-row-top user-row-guest-top" v-else>
+              <text class="user-nickname">未登录</text>
+            </view>
+            <view class="user-row user-row-bottom user-row-guest-bottom" v-if="!isLoggedIn">
+              <view class="login-btn" @click="goLogin">
+                <text class="login-btn-text">登录账户</text>
+              </view>
+            </view>
+            <view class="settings-btn" @click="goSettings" v-if="isLoggedIn">
               <image class="settings-icon" src="/static/icons/setting.svg" mode="aspectFit" />
             </view>
           </view>
@@ -61,17 +69,21 @@
       <text class="contact-title">环地福联系方式</text>
     </view>
     <OfficialFooter />
+    <!-- #ifdef MP-WEIXIN -->
+    <CustomTabBar />
+    <!-- #endif -->
   </view>
 </template>
 
 <script setup lang="ts">
-import { reactive } from "vue";
+import { reactive, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { getMe } from "../../api/auth";
 import { getToken } from "../../utils/storage";
 import { toAbsoluteAssetUrl } from "../../utils/url";
 import OfficialHeader from "../../components/OfficialHeader/OfficialHeader.vue";
 import OfficialFooter from "../../components/OfficialFooter/OfficialFooter.vue";
+import CustomTabBar from "../../components/CustomTabBar/CustomTabBar.vue";
 
 const userInfo = reactive({
   username: "",
@@ -82,29 +94,45 @@ const userInfo = reactive({
   email: "",
   phone: "",
 });
+const isLoggedIn = ref(false);
 
 function getImageUrl(url: string) {
   return toAbsoluteAssetUrl(url);
 }
 
 function goSettings() {
+  if (!ensureLogin()) return;
   uni.navigateTo({ url: "/pages/profile-edit/profile-edit" });
 }
 
 function goAddressManage() {
-  uni.navigateTo({ url: "/pages/address/address-list" });
+  if (!ensureLogin()) return;
+  uni.navigateTo({ url: "/pages/address/address-list?from=profile" });
 }
 
 function goCertificateManage() {
+  if (!ensureLogin()) return;
   uni.navigateTo({ url: "/pages/profile-certificates/profile-certificates" });
 }
 
 function goFavorites() {
+  if (!ensureLogin()) return;
   uni.navigateTo({ url: "/pages/profile-favorites/profile-favorites" });
 }
 
 function goAfterSales() {
+  if (!ensureLogin()) return;
   uni.navigateTo({ url: "/pages/profile-after-sales/profile-after-sales" });
+}
+
+function goLogin() {
+  uni.navigateTo({ url: "/pages/login/login" });
+}
+
+function ensureLogin(): boolean {
+  if (isLoggedIn.value) return true;
+  goLogin();
+  return false;
 }
 
 async function loadUser() {
@@ -119,15 +147,33 @@ async function loadUser() {
       userInfo.email = me.email || "";
       userInfo.phone = me.phone || "";
     }
-  } catch {}
+  } catch {
+    isLoggedIn.value = false;
+    userInfo.username = "";
+    userInfo.nickname = "";
+    userInfo.companyName = "";
+    userInfo.avatarUrl = "";
+    userInfo.role = "";
+    userInfo.email = "";
+    userInfo.phone = "";
+  }
 }
 
 
 onShow(() => {
-  if (!getToken()) {
-    uni.reLaunch({ url: "/pages/login/login" });
+  const token = getToken();
+  if (!token) {
+    isLoggedIn.value = false;
+    userInfo.username = "";
+    userInfo.nickname = "";
+    userInfo.companyName = "";
+    userInfo.avatarUrl = "";
+    userInfo.role = "";
+    userInfo.email = "";
+    userInfo.phone = "";
     return;
   }
+  isLoggedIn.value = true;
   loadUser();
 });
 </script>
@@ -169,6 +215,26 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.user-row-guest-top {
+  align-items: flex-end;
+}
+.user-row-guest-bottom {
+  margin-top: 6rpx;
+}
+.login-btn {
+  height: 52rpx;
+  padding: 0 20rpx;
+  border-radius: 8rpx;
+  background: #0F4C81;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-btn-text {
+  color: #FFFFFF;
+  font-size: 22rpx;
+  font-weight: 600;
 }
 .settings-icon {
   width: 40rpx;
