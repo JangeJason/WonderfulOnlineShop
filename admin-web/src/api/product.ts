@@ -22,8 +22,18 @@ export type PageResult<T> = {
   pages: number
 }
 
-export async function listAdminProducts(page = 1, size = 20) {
-  return await get<PageResult<Product>>('/admin/products', { page, size })
+export type ProductStats = {
+  total: number
+  online: number
+  offline: number
+}
+
+export async function listAdminProducts(opts?: { page?: number; size?: number; keyword?: string; mainCategoryId?: number }) {
+  return await get<PageResult<Product>>('/admin/products', opts)
+}
+
+export async function getAdminProductStats() {
+  return await get<ProductStats>('/admin/products/stats')
 }
 
 export async function getAdminProduct(id: number) {

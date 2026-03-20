@@ -3,22 +3,32 @@
     <!-- 统计卡片 -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-value">{{ rows.length }}</div>
+        <div class="stat-value">{{ stats.total }}</div>
         <div class="stat-label">产品总数</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: #10B981">{{ rows.filter(r => r.status === 1).length }}</div>
+        <div class="stat-value" style="color: #10B981">{{ stats.online }}</div>
         <div class="stat-label">已上架</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: #9FADBF">{{ rows.filter(r => r.status !== 1).length }}</div>
+        <div class="stat-value" style="color: #9FADBF">{{ stats.offline }}</div>
         <div class="stat-label">已下架</div>
       </div>
     </div>
 
     <a-card>
       <template #title>
-        <span style="font-size: 15px">产品列表</span>
+        <div class="title-row">
+          <span style="font-size: 15px">产品列表</span>
+          <a-input-search
+            v-model:value="searchKeywordInput"
+            class="product-search"
+            placeholder="搜索产品ID/名称"
+            allow-clear
+            @search="onSearch"
+            @clear="onSearchClear"
+          />
+        </div>
       </template>
       <template #extra>
         <a-button type="primary" @click="openCreate">+ 新增产品</a-button>
@@ -27,7 +37,7 @@
       <div style="margin-bottom: 16px;">
         <span style="margin-right: 8px; font-weight: bold;">大类筛选:</span>
         <a-checkable-tag
-          :checked="selectedMainCategories.length === 0"
+          :checked="selectedMainCategory === null"
           @change="(checked: boolean) => handleTagChange(null, checked)"
         >
           全部
@@ -35,14 +45,14 @@
         <a-checkable-tag
           v-for="cat in mainCategories"
           :key="cat.id"
-          :checked="selectedMainCategories.includes(cat.id)"
+          :checked="selectedMainCategory === cat.id"
           @change="(checked: boolean) => handleTagChange(cat.id, checked)"
         >
           {{ cat.name }}
         </a-checkable-tag>
       </div>
 
-      <a-table rowKey="id" :dataSource="filteredRows" :columns="columns" :loading="loading">
+      <a-table rowKey="id" :dataSource="rows" :columns="columns" :loading="loading" :pagination="false">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
             <span style="font-weight: 600">{{ record.name }}</span>
@@ -77,6 +87,11 @@
           </template>
         </template>
       </a-table>
+      <div class="table-load-state">
+        <span v-if="loadingMore">正在加载更多...</span>
+        <span v-else-if="hasMore">向下滚动自动加载更多</span>
+        <span v-else>已加载全部 {{ totalCount }} 条</span>
+      </div>
 
       <a-modal v-model:open="modalOpen" :title="editingId ? '编辑产品' : '新增产品'" @ok="onOk" :confirmLoading="saving">
         <a-form layout="vertical" style="margin-top: 16px">
@@ -134,10 +149,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, onBeforeUnmount, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { createProduct, deleteProduct, listAdminProducts, updateProduct, type Product } from '../api/product'
+import { createProduct, deleteProduct, getAdminProductStats, listAdminProducts, updateProduct, type Product } from '../api/product'
 import { listCategories, type Category } from '../api/category'
 
 const router = useRouter()
@@ -145,6 +160,11 @@ const loading = ref(false)
 const saving = ref(false)
 const rows = ref<Product[]>([])
 const categories = ref<Category[]>([])
+const stats = reactive({
+  total: 0,
+  online: 0,
+  offline: 0
+})
 
 const modalOpen = ref(false)
 const editingId = ref<number | null>(null)
@@ -181,48 +201,41 @@ const categoryTree = computed(() => {
 })
 
 // State for filtering
-const selectedMainCategories = ref<number[]>([])
+const selectedMainCategory = ref<number | null>(null)
+const searchKeywordInput = ref('')
+const searchKeyword = ref('')
+const searchMode = ref(false)
+const pageSize = 20
+const currentPage = ref(1)
+const totalPages = ref(1)
+const totalCount = ref(0)
+const loadingMore = ref(false)
+const hasMore = computed(() => currentPage.value < totalPages.value)
 
 // Computed properties for filtering
 const mainCategories = computed(() => {
   return categories.value.filter(c => !c.parentId)
 })
 
-const filteredRows = computed(() => {
-  if (selectedMainCategories.value.length === 0) {
-    return rows.value
-  }
-  
-  return rows.value.filter(r => {
-    if (!r.categoryId) return false;
-    // Check if the product belongs to the selected main category or one of its subcategories
-    const cat = categories.value.find(c => c.id === r.categoryId);
-    if (!cat) return false;
-    
-    // Product is in a main category directly
-    if (!cat.parentId && selectedMainCategories.value.includes(cat.id)) return true;
-    
-    // Product is in a subcategory of a selected main category
-    if (cat.parentId && selectedMainCategories.value.includes(cat.parentId)) return true;
-    
-    return false;
-  })
-})
-
 function handleTagChange(id: number | null, checked: boolean) {
-  if (id === null) {
-    if (checked) {
-      selectedMainCategories.value = []
-    }
-  } else {
-    // Multi-select logic
-    const idx = selectedMainCategories.value.indexOf(id)
-    if (checked && idx === -1) {
-       selectedMainCategories.value.push(id)
-    } else if (!checked && idx !== -1) {
-       selectedMainCategories.value.splice(idx, 1)
-    }
-  }
+  if (!checked) return
+  searchMode.value = false
+  searchKeyword.value = ''
+  selectedMainCategory.value = id
+  resetAndLoad()
+}
+
+function onSearch() {
+  searchKeyword.value = searchKeywordInput.value.trim()
+  searchMode.value = !!searchKeyword.value
+  resetAndLoad()
+}
+
+function onSearchClear() {
+  searchKeywordInput.value = ''
+  searchKeyword.value = ''
+  searchMode.value = false
+  resetAndLoad()
 }
 
 const fileList = ref<any[]>([])
@@ -379,9 +392,24 @@ async function onOk() {
 async function load() {
   loading.value = true
   try {
-    const [pageResult, cats] = await Promise.all([listAdminProducts(), listCategories()])
+    currentPage.value = 1
+    const [pageResult, cats, statsResp] = await Promise.all([
+      listAdminProducts({
+        page: currentPage.value,
+        size: pageSize,
+        keyword: searchMode.value ? searchKeyword.value : undefined,
+        mainCategoryId: searchMode.value ? undefined : selectedMainCategory.value || undefined
+      }),
+      listCategories(),
+      getAdminProductStats()
+    ])
     rows.value = pageResult.records
+    totalCount.value = pageResult.total || 0
+    totalPages.value = Math.max(pageResult.pages || 1, 1)
     categories.value = cats
+    stats.total = statsResp.total || 0
+    stats.online = statsResp.online || 0
+    stats.offline = statsResp.offline || 0
   } catch (e: any) {
     message.error(e?.message || '加载失败')
   } finally {
@@ -389,11 +417,54 @@ async function load() {
   }
 }
 
+async function loadMore() {
+  if (loading.value || loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const nextPage = currentPage.value + 1
+    const pageResult = await listAdminProducts({
+      page: nextPage,
+      size: pageSize,
+      keyword: searchMode.value ? searchKeyword.value : undefined,
+      mainCategoryId: searchMode.value ? undefined : selectedMainCategory.value || undefined
+    })
+    rows.value = [...rows.value, ...pageResult.records]
+    currentPage.value = pageResult.current || nextPage
+    totalPages.value = Math.max(pageResult.pages || 1, 1)
+    totalCount.value = pageResult.total || totalCount.value
+  } catch (e: any) {
+    message.error(e?.message || '加载更多失败')
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+function resetAndLoad() {
+  rows.value = []
+  totalCount.value = 0
+  totalPages.value = 1
+  currentPage.value = 1
+  load()
+}
+
+function onWindowScroll() {
+  if (loading.value || loadingMore.value || !hasMore.value) return
+  const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120
+  if (nearBottom) {
+    loadMore()
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('scroll', onWindowScroll, { passive: true })
   await load()
   if (rows.value.length === 0) {
     openCreate()
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onWindowScroll)
 })
 </script>
 
@@ -403,5 +474,21 @@ onMounted(async () => {
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 20px;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-search {
+  width: 320px;
+}
+
+.table-load-state {
+  margin-top: 12px;
+  color: #64748B;
+  font-size: 13px;
 }
 </style>

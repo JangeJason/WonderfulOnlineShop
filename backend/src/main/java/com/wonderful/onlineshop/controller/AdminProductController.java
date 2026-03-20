@@ -51,14 +51,21 @@ public class AdminProductController {
 
     @GetMapping
     public ApiResponse<IPage<Product>> listAll(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long mainCategoryId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.ok(productService.listAllPaged(page, size));
+        return ApiResponse.ok(productService.listAllPaged(keyword, mainCategoryId, page, size));
     }
 
     @GetMapping("/{id}")
     public ApiResponse<Product> getById(@PathVariable("id") Long id) {
         return ApiResponse.ok(productService.getById(id));
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<ProductService.ProductStats> stats() {
+        return ApiResponse.ok(productService.stats());
     }
 
     @PostMapping

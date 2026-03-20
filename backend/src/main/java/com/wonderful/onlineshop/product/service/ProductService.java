@@ -5,19 +5,24 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wonderful.onlineshop.common.BusinessException;
 import com.wonderful.onlineshop.product.entity.Product;
+import com.wonderful.onlineshop.product.mapper.CategoryMapper;
 import com.wonderful.onlineshop.product.mapper.ProductMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class ProductService {
 
     private final ProductMapper productMapper;
+    private final CategoryMapper categoryMapper;
 
-    public ProductService(ProductMapper productMapper) {
+    public ProductService(ProductMapper productMapper, CategoryMapper categoryMapper) {
         this.productMapper = productMapper;
+        this.categoryMapper = categoryMapper;
     }
 
     public List<Product> listActive(String keyword, Long categoryId) {
@@ -56,6 +61,48 @@ public class ProductService {
                 new LambdaQueryWrapper<Product>().orderByDesc(Product::getId));
         pageData.getRecords().forEach(this::hydrateImageFieldsForResponse);
         return pageData;
+    }
+
+    public IPage<Product> listAllPaged(String keyword, Long mainCategoryId, int page, int size) {
+        LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            String trimmed = keyword.trim();
+            Long keywordId = null;
+            try {
+                keywordId = Long.parseLong(trimmed);
+            } catch (NumberFormatException ignored) {
+            }
+            Long finalKeywordId = keywordId;
+            wrapper.and(w -> {
+                if (finalKeywordId != null) {
+                    w.eq(Product::getId, finalKeywordId).or().like(Product::getName, trimmed);
+                } else {
+                    w.like(Product::getName, trimmed);
+                }
+            });
+        } else if (mainCategoryId != null) {
+            Set<Long> categoryIds = new HashSet<>();
+            categoryIds.add(mainCategoryId);
+            categoryMapper.selectList(new LambdaQueryWrapper<com.wonderful.onlineshop.product.entity.Category>()
+                    .eq(com.wonderful.onlineshop.product.entity.Category::getParentId, mainCategoryId))
+                    .forEach(cat -> categoryIds.add(cat.getId()));
+            wrapper.in(Product::getCategoryId, categoryIds);
+        }
+
+        wrapper.orderByDesc(Product::getId);
+        IPage<Product> pageData = productMapper.selectPage(new Page<>(page, size), wrapper);
+        pageData.getRecords().forEach(this::hydrateImageFieldsForResponse);
+        return pageData;
+    }
+
+    public ProductStats stats() {
+        long total = productMapper.selectCount(new LambdaQueryWrapper<>());
+        long online = productMapper.selectCount(new LambdaQueryWrapper<Product>().eq(Product::getStatus, 1));
+        long offline = Math.max(total - online, 0);
+        return new ProductStats(total, online, offline);
+    }
+
+    public record ProductStats(long total, long online, long offline) {
     }
 
     public Product getActiveRequired(Long id) {
